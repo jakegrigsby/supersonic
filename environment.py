@@ -1,33 +1,38 @@
-import copy
 import numpy as np
 import gym
 import retro
 import cv2
 from numpy_ringbuffer import RingBuffer
+import utils
 
 #don't use the gpu for frame scaling
 cv2.ocl.setUseOpenCL(False)
 
 
 ENV_BUILDER_REGISTRY = {}
-
-
-def env_builder(key):
+def env_builder(keys):
+    keys = list(keys) if not type(keys) == list else keys
     def register(func):
-        ENV_BUILDER_REGISTRY[key] = func
+        for key in keys:
+            ENV_BUILDER_REGISTRY[key] = func
         return func
     return register
 
-def auto_env(**kwargs):
+def auto_env(env_id, **kwargs):
    """
-   auto parsing of env id string to generate env for registered types using ENV_BUILDER_REGISTRY
+   automatically finds the right environment builder function for the input environment id.
 
-   env = auto_env('GreenHillZoneAct1') returns correct SonicEnv
-   env = auto_env('Montezumas') returns correct Montezuma, all with same func
+   Connects id's to funcs using ENV_BUILDER_REGISTRY. Register a new function using the env_builder decorator:
+    @env_builder([lvl1, lvl2, lvl3, ...])
+    def this_builds_env():
 
-   We don't really need this right now because it's all Sonic. But I set up the registry decorator so might as well.
-   Will be nice later when we're switching between gym and retro a lot.
+    this will register lvl1, lvl2 etc and connect them to this_builds_env().
    """
+   if env_id in ENV_BUILDER_REGISTRY:
+       return ENV_BUILDER_REGISTRY[env_id](env_id, **kwargs)
+   else:
+       return base_env(env_id, **kwargs)
+       
    raise NotImplementedError()
 
 class Camera(gym.Wrapper):
@@ -54,9 +59,9 @@ class Camera(gym.Wrapper):
     def __init__(self, env):
         raise NotImplementedError()
 
-
-@env_builder('Sonic')
-def build_sonic(game, lvl):
+@env_builder(utils.all_sonic_lvls().keys())
+def build_sonic(lvl):
+    game = utils.get_game_from_sonic_lvl(lvl)
     env = base_env(game, lvl)
     env = WarpFrame(env)
     env = AllowBacktracking(env)
@@ -68,14 +73,14 @@ def build_sonic(game, lvl):
     return env
 
 
-def base_env(**kwargs):
+def base_env(*args):
     """
     auto-switching between gym and gym-retro
     """
     try:
-        env = gym.make(**kwargs)
+        env = gym.make(*args)
     except:
-        env = retro.make(**kwargs)
+        env = retro.make(*args)
     return env
 
 class ClipReward(gym.RewardWrapper):
@@ -85,9 +90,8 @@ class ClipReward(gym.RewardWrapper):
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
 
-    def step(self, action):
-        obs, rew, done, info = self.env.step(action)
-        return obs, self.clip(self.lower_bound, rew, self.upper_bound), done, info
+    def reward(self, rew):
+        return self.clip(rew)
 
     def clip(min_val, value, max_val):
         return min(max(min_val, value), max_val)
@@ -97,10 +101,10 @@ class WarpFrame(gym.ObservationWrapper):
     84 x 84, grayscale
     """
     def __init__(self, env):
-        gym.ObservationWrapper.__init__(self, env)
+        super().__init__(env)
         self.width = 84
         self.height = 84
-        self.observation_space = spaces.Box(low=0, high=255,
+        self.observation_space = gym.spaces.Box(low=0, high=255,
             shape=(self.height, self.width, 1), dtype=np.uint8)
 
     def observation(self, frame):
@@ -132,7 +136,7 @@ class MaxAndSkipEnv(gym.Wrapper):
     Look at every k'th frame. More memory efficient. More realistic (human) reaction time.
     """
     def __init__(self, env, skip=4):
-        super().__init__(self, env)
+        super().__init__(env)
         self._obs_buffer = np.zeros((2,)+env.observation_space.shape, dtype=np.uint8)
         self._skip = skip
 
@@ -153,14 +157,14 @@ class MaxAndSkipEnv(gym.Wrapper):
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
-class DynamicNormalize(gym.ObservationWrapper):
+class DynamicNormalize(gym.Wrapper):
     """
     Normalize observations and rewards using a running mean and std dev.
 
     adapt_until: adjust the mean and variance for this many steps
     """
     def __init__(self, env, adapt_until=10000):
-        super().__init__(self, env)
+        super().__init__(env)
         self.adapt_until = adapt_until
         self.reset_normalization()
         
@@ -192,8 +196,8 @@ class DynamicNormalize(gym.ObservationWrapper):
 
     def reset_normalization(self):
         self.count = 0
-        self.o_mean, self.o_m2, self.o_variance = np.zeros(self.env.observation_space.shape).astype(np.uint8)
-        self.r_mean, self.r_m2, self.r_var = .0
+        self.o_mean, self.o_m2, self.o_variance = [np.zeros(self.env.observation_space.shape).astype(np.uint8)] * 3
+        self.r_mean, self.r_m2, self.r_var = .0, .0, .0
 
 class FrameStack(gym.Wrapper):
     """
