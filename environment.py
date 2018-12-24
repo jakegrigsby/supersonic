@@ -32,8 +32,6 @@ def auto_env(env_id, **kwargs):
        return ENV_BUILDER_REGISTRY[env_id](env_id, **kwargs)
    else:
        return base_env(env_id, **kwargs)
-       
-   raise NotImplementedError()
 
 class Camera(gym.Wrapper):
     """
@@ -73,14 +71,14 @@ def build_sonic(lvl):
     return env
 
 
-def base_env(*args):
+def base_env(*args, **kwargs):
     """
     auto-switching between gym and gym-retro
     """
     try:
-        env = gym.make(*args)
+        env = gym.make(*args, **kwargs)
     except:
-        env = retro.make(*args)
+        env = retro.make(*args, **kwargs)
     return env
 
 class ClipReward(gym.RewardWrapper):
@@ -100,10 +98,10 @@ class WarpFrame(gym.ObservationWrapper):
     """
     84 x 84, grayscale
     """
-    def __init__(self, env):
+    def __init__(self, env, width=84, height=84):
         super().__init__(env)
-        self.width = 84
-        self.height = 84
+        self.width = width
+        self.height = height
         self.observation_space = gym.spaces.Box(low=0, high=255,
             shape=(self.height, self.width, 1), dtype=np.uint8)
 
