@@ -2,7 +2,6 @@ import numpy as np
 import gym
 import retro
 import cv2
-from numpy_ringbuffer import RingBuffer
 import utils
 
 #don't use the gpu for frame scaling
@@ -43,7 +42,7 @@ def build_sonic(lvl):
     env = DynamicNormalize(env)
     env = SonicDiscretizer(env)
     env = StickyActionEnv(env)
-    env = FrameStack(env)
+    env = FrameStackWrapper(env)
     return env
 
 
@@ -65,9 +64,9 @@ class ClipReward(gym.RewardWrapper):
         self.upper_bound = upper_bound
 
     def reward(self, rew):
-        return self.clip(rew)
+        return self.clip(self.lower_bound, rew, self.upper_bound)
 
-    def clip(min_val, value, max_val):
+    def clip(self, min_val, value, max_val):
         return min(max(min_val, value), max_val)
 
 class WarpFrame(gym.ObservationWrapper):
@@ -84,7 +83,7 @@ class WarpFrame(gym.ObservationWrapper):
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        return frame[:, :, None]
+        return np.squeeze(frame)
 
 class StickyActionEnv(gym.Wrapper):
     """
@@ -144,7 +143,8 @@ class DynamicNormalize(gym.Wrapper):
         
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
-        return dynamic_normalize(obs, rew), done, info
+        obs, rew = self.dynamic_normalize(obs, rew)
+        return obs, rew, done, info
 
     def update_stats(self, obs, rew):
         self.count += 1
@@ -154,7 +154,7 @@ class DynamicNormalize(gym.Wrapper):
         delta2 = obs - self.o_mean
         self.o_m2 += delta * delta2
         self.o_variance = self.o_m2 / self.count 
-
+        
         delta = rew - self.r_mean
         self.r_mean += delta / self.count
         delta2 = rew - self.r_mean
@@ -164,16 +164,19 @@ class DynamicNormalize(gym.Wrapper):
     def dynamic_normalize(self, obs, rew):
         if self.count < self.adapt_until:
             self.update_stats(obs, rew)
-        norm_obs = (obs - self.o_mean) / np.sqrt(self.o_var + 1e-5)
-        norm_rew = (rew - self.r_mean) / (self.r_var + 1e-5)**(1/2) 
+        norm_obs = (obs - self.o_mean) / np.sqrt(self.o_variance + 1e-5)
+        norm_rew = (rew - self.r_mean) / (self.r_variance + 1e-5)**(1/2) 
         return norm_obs, norm_rew
 
     def reset_normalization(self):
         self.count = 0
-        self.o_mean, self.o_m2, self.o_variance = [np.zeros(self.env.observation_space.shape).astype(np.uint8)] * 3
+        self.o_mean, self.o_m2, self.o_variance = [np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float64))] * 3
         self.r_mean, self.r_m2, self.r_var = .0, .0, .0
 
-class FrameStack(gym.Wrapper):
+    def reset(self):
+        return self.env.reset()
+
+class FrameStackWrapper(gym.Wrapper):
     """
     Most game-based RL envs are partially observable. It's common to compensate using a stack of the k most
     recent frames, giving the agent a sense of direction and speed. This wrapper keeps track of that frame stack
@@ -182,11 +185,11 @@ class FrameStack(gym.Wrapper):
     def __init__(self, env, k=4):
         super().__init__(env)
         self.k = k
-        self.frames = RingBuffer(capacity=k, dtype=np.uint8)
+        self.frames = utils.FrameStack(capacity=k, default_frame= self.env.reset())
 
     def reset(self):
-        reset_obs = self.env.reset()
-        self.frames.extend([reset_obs] * k)
+        self.env.reset()
+        self.frames.reset()
         return self.stack
     
     def step(self, action):
@@ -196,7 +199,7 @@ class FrameStack(gym.Wrapper):
     
     @property
     def stack(self):
-        return np.array(self.frames)
+        return self.frames.stack
 
         
 class RewardScaler(gym.RewardWrapper):
