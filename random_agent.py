@@ -3,16 +3,19 @@ import os
 
 import environment
 from episode_log import EpisodeLog
+import camera
 
 
 
 class SonicRandomAgent:
 
-    def __init__(self, env_id, log_filepath=''):
+    def __init__(self, env_id, log_filepath=None):
         self.env = environment.auto_env(env_id)
-        log_filename = os.path.join(log_filepath, '{}_{}'.format(self.__class__.__name__, env_id))
         fieldnames = ['max_x', 'reward', 'score']
-        self.log = EpisodeLog(log_filename, fieldnames)
+        self.logging = bool(log_filepath)
+        if self.logging:
+            log_filename = os.path.join(log_filepath, '{}_{}'.format(self.__class__.__name__, env_id))
+            self.log = EpisodeLog(log_filename, fieldnames) if log_filepath else None
         self.reset_ep_stats()
 
     def run(self, episodes, max_steps=100, render=False):
@@ -27,7 +30,8 @@ class SonicRandomAgent:
                 self.update_ep_stats(rew, done, info)
                 step += 1
 
-            self.log.write(self.get_ep_dict())
+            if self.logging: 
+                self.log.write(self.get_ep_dict())
         self.log.close()
 
     def choose_action(self):
@@ -55,4 +59,7 @@ class SonicRandomAgent:
 
 if __name__ == '__main__':
     x = SonicRandomAgent('GreenHillZone.Act1')
-    x.run(1, render=True)
+    cam = camera.Camera(x)
+    cam.start_recording('testvideo.mov')
+    x.run(1, render=False, max_steps=500)
+    cam.stop_recording()

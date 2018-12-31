@@ -1,3 +1,4 @@
+import os
 
 import gym
 import retro
@@ -32,13 +33,15 @@ class Camera(gym.Wrapper):
         self._buffer.reset()
         return self.env.reset()
 
-    def record(self, output_dir):
+    def start_recording(self, output_path):
         """
         Begin recording gameplay clip.
 
-        output_dir: file path for recorded video
+        output_path: file path for recorded video
         """
-        self.output_dir = output_dir
+        filename, extension = os.path.splitext(output_path)
+        filename += '.mp4'
+        self.rec_output_path = filename
         self.recording = True
         self.clip, self.actions = [], []
     
@@ -74,16 +77,16 @@ class Camera(gym.Wrapper):
         stop recording and save video to output path provided when recording began.
         """
         self.clip = np.asarray(self.clip, dtype=np.uint8)
-        skvideo.io.vwrite(self.output_dir, self.clip)
+        skvideo.io.vwrite(self.rec_output_path, self.clip)
         self.clip, self.actions = [], []
 
-    def record_that(self, output_dir):
+    def record_that(self, output_path):
         """
         Save the last `highlight_buffer_capacity` frames to a video. Allows
         recording to take place after the event occured.
         """
         if self.record_that_enabled:
-            skvideo.io.vwrite(output_dir, self._buffer.stack)
+            skvideo.io.vwrite(output_path, self._buffer.stack)
             self._buffer.reset()
         else:
             raise AttributeError()
@@ -96,6 +99,8 @@ class Camera(gym.Wrapper):
 
     def _enable_record_that(self, output_dir):
         self.env.record_that(output_dir)
+    
+    record = start_recording
 
 
 
