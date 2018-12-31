@@ -1,27 +1,102 @@
+
 import gym
+import retro
+import skvideo.io
+import numpy as np
+
+import utils
 
 class Camera(gym.Wrapper):
     """
     Recording gameplay footage.
     
-    -Should be turned on and off automatically based on some set of rules
-    we decide show if gameplay is worth recording.
-    
-    -Can decide to record something after it already happened. We'll need that for recoridng
-    the first time it gets past tough obstacles in the level. (triggered by x and y pos). Will need
-    a buffer that keeps the latest frames and can be saved to memory when somethign important happens.
-    Otherwise it keeps getting overwritten. Use RingBuffer() probably. Search up numpy_ringbuffer
-
-    -Also ability to start and stop recording like normal (things that haven't happened yet), and for as long
-    as we need.
-
-    -Implemented like the other wrappers below.
-
-    -The info variable from env.step() is a dict with a bunch of game info like x pos, y pos, rings, lives, score and stuff like that.
-
-    env = Camera(env)
+    env: env to record. Can be a wrapped env.
+    raw_frames: usually you want to record gameplay footage as seen by a human player (vs. the processed
+                version shown to the agent.) If true this wrapper 'dives' down to become the lowest-level wrapper
+                of your base env. That way, when it saves gameplay frames they are not altered. Defaults to true.
+    highlight_buffer_capacity: If > 0, camera has ability to record save this many frames to video *after* they've already
+                occured. Useful when the decision to record can only be made after a key event (like the first time a tough
+                obstacle is cleared).
     """
-    def __init__(self, env):
-        self.env = env
+    def __init__(self, agent, raw_frames=True, highlight_buffer_capacity=250):
+        self.env = agent.env
+        super().__init__(self.env)
+        self.recording = False
+        self.raw_frames = raw_frames
+        self.record_that_enabled = bool(highlight_buffer_capacity)
+        if raw_frames:
+            self._dive_down()
+        self._buffer = utils.FrameStack(capacity=highlight_buffer_capacity, default_frame=self.env.reset()) 
+
+    def reset(self):
+        self._buffer.reset()
+        return self.env.reset()
+
+    def record(self, output_dir):
+        """
+        Begin recording gameplay clip.
+
+        output_dir: file path for recorded video
+        """
+        self.output_dir = output_dir
+        self.recording = True
+        self.clip, self.actions = [], []
+    
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        if self.record_that_enabled:
+            self._buffer.append(obs)
+        if self.recording:
+            self.clip.append(obs)
+            self.actions.append(action)
+        return obs, rew, done, info
+
+    def _dive_down(self):
+        """
+        If raw_frames is set to true, camera needs access to unwrapped env to record
+        unaltered observations. The wrapper system works like a singly linked list.
+        This function positions the Camera module just above the unwrapped env.
+        """
+        if not hasattr(self.env, "env"):
+            #the env is the base env
+            return
+        inner_wrapper = self.env
+        while not inner_wrapper.env.unwrapped == inner_wrapper.env:
+            inner_wrapper = inner_wrapper.env
+            inner_wrapper.record = self._enable_record
+            inner_wrapper.stop_recording = self._enable_stop_recording
+            inner_wrapper.record_that = self._enable_record_that
+        self.env = inner_wrapper.env
+        inner_wrapper.env = self
+
+    def stop_recording(self):
+        """
+        stop recording and save video to output path provided when recording began.
+        """
+        self.clip = np.asarray(self.clip, dtype=np.uint8)
+        skvideo.io.vwrite(self.output_dir, self.clip)
+        self.clip, self.actions = [], []
+
+    def record_that(self, output_dir):
+        """
+        Save the last `highlight_buffer_capacity` frames to a video. Allows
+        recording to take place after the event occured.
+        """
+        if self.record_that_enabled:
+            skvideo.io.vwrite(output_dir, self._buffer.stack)
+            self._buffer.reset()
+        else:
+            raise AttributeError()
+    
+    def _enable_record(self, output_dir):
+        self.env.record(output_dir)
+    
+    def _enable_stop_recording(self):
+        self.env.stop_recording()
+
+    def _enable_record_that(self, output_dir):
+        self.env.record_that(output_dir)
+
+
 
 

@@ -4,7 +4,7 @@ import os
 import environment
 from episode_log import EpisodeLog
 
-#lost and decompiled by uncompyle6
+
 
 class SonicRandomAgent:
 

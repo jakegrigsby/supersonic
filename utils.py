@@ -2,7 +2,7 @@ import csv
 
 def load_sonic_lvl_set(train=True):
     lvls = {}
-    with open('sonic-train.csv' if train else 'sonic-val.csv', newline='') as lvl_file:
+    with open('data/sonic-train.csv' if train else 'data/sonic-val.csv', newline='') as lvl_file:
         reader = csv.reader(lvl_file)
         for row in reader:
             lvls[row[1]] = row[0] #lvls[lvl] = game
@@ -42,9 +42,9 @@ class FrameStack:
 
     def __setitem__(self, key, value):
         try:
-            self._tensor[:,:,key] = value
+            self._tensor[...,key] = value
         except:
-            self._tensor[:,:,key] = np.squeeze(value)
+            self._tensor[...,key] = np.squeeze(value)
 
     @property
     def shape(self):
