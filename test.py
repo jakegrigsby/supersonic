@@ -29,7 +29,7 @@ class EnvironmentTestCase(unittest.TestCase):
         self.agent.run(1, max_steps=10)
     
     def tearDown(self):
-        del self.agent
+        self.agent = None
 
     @classmethod 
     def tearDownClass(cls):

@@ -10,15 +10,17 @@ import camera
 class SonicRandomAgent:
 
     def __init__(self, env_id, log_filepath=None):
+        self.env_id = env_id
         self.env = environment.auto_env(env_id)
-        fieldnames = ['max_x', 'reward', 'score']
+        self.fieldnames = ['max_x', 'reward', 'score']
         self.logging = bool(log_filepath)
-        if self.logging:
-            log_filename = os.path.join(log_filepath, '{}_{}'.format(self.__class__.__name__, env_id))
-            self.log = EpisodeLog(log_filename, fieldnames) if log_filepath else None
-        self.reset_ep_stats()
+        self.log_filepath = log_filepath
 
     def run(self, episodes, max_steps=100, render=False):
+        if self.logging:
+            log_filename = os.path.join(self.log_filepath, '{}_{}'.format(self.__class__.__name__, self.env_id))
+            self.log = EpisodeLog(log_filename, self.fieldnames)
+        self.reset_ep_stats()
         for ep in range(episodes):
             self.env.reset()
             step = 0
