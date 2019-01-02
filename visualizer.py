@@ -56,7 +56,7 @@ class Visualizer:
             self.update(episode_log)
 
     def update(self, episode_log):
-        with open('data/test_data2.csv', 'r+', newline='') as file:
+        with open(episode_log.filename, 'r+', newline='') as file:
             reader = csv.DictReader(file, dialect='unix')
 
             # store data
