@@ -24,15 +24,11 @@ class TrainingManager:
     def train(self, epochs):
         self.agent.train(epochs, self.device)
     
-    def gather_logs(self):
-        self.dataframes = comm.gather(self.agent.log, root=0)
-        #can EpisodeLog object be made pickleable?
-    
     def gather_weights(self):
         self.model_weights = comm.Gather(self.agent.weights, root=0)
     
     def send_weights(self, weights):
-        self.agent.weigts = comm.Scatter(weights, root=0)
+        self.agent.weigts = comm.Bcast(weights, root=0)
 
 
 
