@@ -9,8 +9,7 @@ class EpisodeLog:
 
     def __init__(self, filename, fieldnames, new=True):
         self.id = uuid.uuid4()
-        # self.filename = filename +  '_{}'.format(self.id)
-        self.filename = filename
+        self.filename = filename +  '_{}'.format(self.id)
         self.log = open(self.filename, 'w+', newline='')
         self.fieldnames = fieldnames
         self.start_time = time.clock()
