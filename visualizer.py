@@ -2,6 +2,7 @@ import csv
 import time
 from datetime import datetime
 from visdom import Visdom
+import pandas as pd
 
 from episode_log import EpisodeLog
 
@@ -13,10 +14,11 @@ class Visualizer:
         self.win = win
         self.time = time.time()
 
-        self.episode_logs = episode_logs
+        self.filenames = episode_logs
         self.update_interval = update_interval
 
     def run(self):
+        self.update_all()
         while True:
             current_time = time.time()
             if current_time - self.time >= self.update_interval:
@@ -52,15 +54,19 @@ class Visualizer:
 
     def update_all(self):
         print('updating graphs:', datetime.now())
-        for episode_log in self.episode_logs:
-            self.update(episode_log)
+        for filename in self.filenames:
+            self.update(filename)
 
-    def update(self, episode_log):
-        with open(episode_log.filename, 'r+', newline='') as file:
+    def update(self, filename):
+        with open(filename, 'r+', newline='') as file:
             reader = csv.DictReader(file, dialect='unix')
 
-            # store data
+            # store metrics
             metrics = reader.fieldnames
+            if metrics is None:
+                return
+
+            # store data
             data = [[] for _ in metrics]
             for row in reader:
                 for i in range(len(metrics)):
@@ -68,25 +74,6 @@ class Visualizer:
 
             # update each metric's plot on Visdom
             for i in range(len(metrics)):
-                line = self.get_line(episode_log.filename, data[i])
-                layout = self.get_layout(episode_log.filename, metrics[i])
-                self.viz._send({'data': [line], 'layout': layout, 'win': self.win + episode_log.filename + metrics[i]})
-
-
-# def test():
-#     filenames = ['data/test_data.csv', 'data/test_data2.csv']
-#     fieldnames = ['score', 'ep_length', 'value_loss']
-#     episode_logs = [EpisodeLog(filenames[0], fieldnames), EpisodeLog(filenames[1], fieldnames)]
-#
-#     for x in range(1, 201):
-#         dict1 = {fieldnames[0]: x, fieldnames[1]: x ** (1/2), fieldnames[2]: 1 / x}
-#         dict2 = {fieldnames[0]: x * (1-x), fieldnames[1]: x ** (3/2), fieldnames[2]: 10 / x}
-#         episode_logs[0].write(dict1)
-#         episode_logs[1].write(dict2)
-#
-#     update_interval = 2
-#     win = 'test'
-#     visualizer = Visualizer(episode_logs, update_interval, win)
-#     visualizer.run()
-#
-# test()
+                line = self.get_line(filename, data[i])
+                layout = self.get_layout(filename, metrics[i])
+                self.viz._send({'data': [line], 'layout': layout, 'win': self.win + filename + metrics[i]})
