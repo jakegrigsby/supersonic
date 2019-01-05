@@ -34,7 +34,7 @@ class SonicRandomAgent:
 
             if self.logging: 
                 self.log.write(self.get_ep_dict())
-        self.log.close()
+        if self.logging: self.log.close()
 
     def choose_action(self):
         if random.random() < 0.15:
@@ -63,5 +63,5 @@ if __name__ == '__main__':
     x = SonicRandomAgent('GreenHillZone.Act1')
     cam = camera.Camera(x)
     cam.start_recording('testvideo.mov')
-    x.run(1, render=False, max_steps=500)
+    x.run(1, render=True, max_steps=4500)
     cam.stop_recording()
