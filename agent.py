@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-class BaesAgent:
+class BaseAgent:
     """
     Build a deep RL agent to learn on env generated from env_id.
 
@@ -13,7 +13,7 @@ class BaesAgent:
 
     def train(self, epochs, device):
         pass
-    
+
     @property
     def weights(self):
         """return current model weights as numpy array."""
