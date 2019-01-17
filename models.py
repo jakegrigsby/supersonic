@@ -9,11 +9,13 @@ class NatureVision(tf.keras.Model):
         self.conv1 = tf.keras.layers.Conv2D(32, kernel_size=(8,8), strides=4, activation='relu', data_format='channels_last')
         self.conv2 = tf.keras.layers.Conv2D(64, kernel_size=(4,4), strides=2, activation='relu', data_format='channels_last')
         self.conv3 = tf.keras.layers.Conv2D(64, kernel_size=(3,3), strides=1, activation='relu', data_format='channels_last')
+        self.flatten = tf.keras.layers.Flatten(data_format='channels_last')
 
     def call(self, inputs):
         x = self.conv1(inputs)
         x = self.conv2(x)
         x = self.conv3(x)
+        x = self.flatten(x)
         return x
 
 class NaturePolicy(tf.keras.Model):
