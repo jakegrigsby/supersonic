@@ -2,20 +2,14 @@ import numpy as np
 import tensorflow as tf
 
 import environment
+import utils
 
-class Trajectory:
-"""
-Stores all the data from each rollout until training time.
-
-Go from obs, rew to all the info needed for BaseAgent.update_models
-
-TODO
-"""
 class BaseAgent:
     """
     The version of PPO used for meta learning could be different than sprinting.
     """
-    def __init__(self, env_id, hyp_dict):
+    def __init__(self, env_id, **kwargs):
+        """lot more params to come so not dealing with that for now"""
         self.env = environemnt.auto_env(env_id)
 
         self.exp_lr = exp_lr
@@ -44,8 +38,11 @@ class BaseAgent:
                 obs, rew, done, info = self.env.step(action)
 
     def rollout(steps):
-        """Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a Trajectory obejct"""
-        
+        """
+        Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
+        """
+        raise NotImplementedError()
+
     def choose_action(self, obs):
         features = self.vis_model(obs)
         actions = self.policy_model(features)

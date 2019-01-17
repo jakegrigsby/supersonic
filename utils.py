@@ -58,18 +58,29 @@ class FrameStack:
     def stack(self):
         return self._tensor
 
- 
+class Trajectory:
+"""
+Stores all the data from each rollout until training time.
 
+Go from obs, rew to all the info needed for BaseAgent.update_models
 
+TODO
+"""
+    def __init__(self, obs_shape):
+        #keeping track of attributes used in update_models
+        self.states = []
+        self.rews = []
+        self.old_act_probs = []
+        self.gaes = []
+        self.vals = []
 
+    def add(self, state, rew, act_probs, val):
+        self.states.append(state)
+        self.rews.append(rew)
+        self.old_act_probs.append(act_probs)
+        self.vals.append(val)
 
-
-
-
-
-
-
-
-
-
+    def end_trajectory(self):
+        """calculate gaes, rewards-to-go, convert to numpy arrays."""
+        raise NotImplementedError()
 
