@@ -33,7 +33,7 @@ class BaseAgent:
         for ep in range(episodes):
             step = 0
             obs, rew, done, info = self.env.reset()
-            while step < max_ep_steps:
+            while step < max_ep_steps and not done:
                 action = self.choose_action(obs)
                 obs, rew, done, info = self.env.step(action)
 
@@ -83,7 +83,7 @@ class BaseAgent:
             for (batch, (state, rew, old_act_prob, gae)) in enumerate(dataset.take(64)):
                 if step > self.policy_net_opt_steps and step > self.val_net_opt_steps: break
                 with tf.GradientTape(persistent=True) as tape:
-                    features = self.viz_model(state)
+                    features = self.vis_model(state)
                     new_act_probs = self.policy_model(features)
                     val = self.value_model(features)
                     ratios = tf.exp(tf.log(new_act_probs) - tf.log(old_act_probs))
