@@ -1,4 +1,5 @@
 import csv
+import scipy
 
 def load_sonic_lvl_set(train=True):
     lvls = {}
@@ -59,28 +60,46 @@ class FrameStack:
         return self._tensor
 
 class Trajectory:
-"""
-Stores all the data from each rollout until training time.
+    """
+    The storage and calculation needed for each training trajectory for a PPO
+    agent.
 
-Go from obs, rew to all the info needed for BaseAgent.update_models
-
-TODO
-"""
-    def __init__(self, obs_shape):
+    The trajectory is initialized. Each step adds information. Then end_trajectory
+    is called and all the information needed to update the RND networks is 
+    calculated and made available.
+    """
+    def __init__(self):
         #keeping track of attributes used in update_models
         self.states = []
+        self.i_rews = []
         self.rews = []
         self.old_act_probs = []
-        self.gaes = []
         self.vals = []
+        self.exp_targets = []
 
-    def add(self, state, rew, act_probs, val):
+    def add(self, state, rew, i_rew, exp_target, act_probs, val):
         self.states.append(state)
         self.rews.append(rew)
+        self.i_rews.append(i_rew)
         self.old_act_probs.append(act_probs)
         self.vals.append(val)
+        self.exp_targets.append(exp_target)
 
-    def end_trajectory(self):
+    def end_trajectory(self, gamma, lam):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
-        raise NotImplementedError()
-
+        #calculate advantages
+        self.vals_next = self.vals[1:] + 0
+        deltas = self.rews[:-1] + gamma * self.vals_next - self.vals
+        e_adv = self.discount_cumsum(deltas, gamma * lam)
+        deltas = self.i_rews[:-1] + gamma * self.vals_next - self.vals
+        i_adv = self.discount_cumsum(deltas, gamma * lam)
+        self.gaes = np.asarray(e_adv) + np.asarray(i_adv)
+        self.states = np.assarray(self.states, dtype=np.uint8)
+        i_rews = np.asarray(self.discount_cumsum(self.i_rews, gamma))
+        e_rews = np.asarray(self.dicount_cumsum(self.rews, gamma))
+        self.rews = i_rews + e_rews
+        self.exp_targets = np.asarray(self.exp_targets)
+        self.old_act_probs = np.asarray(self.old_act_probs)
+        
+    def discount_cumsum(self, discount):
+        return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]

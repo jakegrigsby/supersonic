@@ -24,6 +24,9 @@ class BaseAgent:
 
         self.exp_net_opt_steps = exp_net_opt_steps
 
+        self.gamma = gamma
+        self.lam = lam
+
     def train(self, rollouts, device):
         for _ in range(rollouts):
             trajectory = self.rollout(steps)
@@ -41,12 +44,29 @@ class BaseAgent:
         """
         Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
         """
-        raise NotImplementedError()
+        obs, e_rew, done, info = self.env.reset()
+        step = 0
+        trajectory = utils.Trajectory()
+        while step < steps and not done:
+            action_probs, val = self.choose_action_get_value(obs)
+            action = np.argmax(action_probs)
+            obs, e_rew, done, info = self.env.step(action)
+            i_rew, exp_target = self.calc_intrinsic_reward(obs)        
+            trajectory.add(obs, e_rew, i_rew, exp_target, action_probs, val) 
+            step += 1
+        trajectory.end_trajectory(self.gamma, self.lam)
+        return trajectory
 
     def choose_action(self, obs):
         features = self.vis_model(obs)
         actions = self.policy_model(features)
         return np.argmax(actions)
+
+    def choose_action_get_value(self, obs):
+        features = self.vis_model(obs)
+        action_probs = self.policy_model(features)
+        val = self.val_model(features)
+        return action_probs, val
 
     def calc_intrinsic_reward(self, state):
         target = self.exp_target_model(state)
@@ -89,7 +109,7 @@ class BaseAgent:
                     ratios = tf.exp(tf.log(new_act_probs) - tf.log(old_act_probs))
                     min_gae = tf.where(gae>0, (1+self.clip_value)*gae, (1-self.clip_value)*gae)
                     p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
-                    v_loss = tf.reduce_mean(tf.square(rew - val))
+                    v_loss = tf.reduce_mean(tf.square(rew + self.gamma*  - val))
 
                 grads = tape.gradient(p_loss, [self.vis_model.variables, self.policy_model.variables])
                 p_optimizer.apply_gradients(zip(grads, [self.vis_model.variables, self.policy_model.variables]), global_step=tf.train.get_or_create_global_step())
