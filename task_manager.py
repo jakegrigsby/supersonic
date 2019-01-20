@@ -25,7 +25,7 @@ class TrainingManager:
         self.agent.train(epochs, self.device)
     
     def gather_weights(self):
-        self.model_weights = comm.Gather(self.agent.weights, root=0)
+        self.new_weights = comm.Gather(self.agent.weights, root=0)
     
     def send_weights(self, weights):
         self.agent.weigts = comm.Bcast(weights, root=0)

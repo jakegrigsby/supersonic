@@ -1,5 +1,15 @@
 import tensorflow as tf
 
+
+MODEL_REGISTRY = {}
+def model(model_id):
+    def register(model_func)
+        MODEL_REGISTRY[model_id] = model_func
+        return model_func
+    return register
+
+
+@model('NatureVision')
 class NatureVision(tf.keras.Model):
     """
     The vision half of the network used in the 2015 DQN Nature paper.
@@ -18,6 +28,7 @@ class NatureVision(tf.keras.Model):
         x = self.flatten(x)
         return x
 
+@model('NaturePolicy')
 class NaturePolicy(tf.keras.Model):
     """
     Standard policy network.
@@ -32,7 +43,7 @@ class NaturePolicy(tf.keras.Model):
         x = self.out(x)
         return x
 
-
+@model('VanillaValue')
 class VanillaValue(tf.keras.Model):
     """
     Standard value network.

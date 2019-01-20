@@ -4,6 +4,23 @@ import tensorflow as tf
 import environment
 import utils
 
+def ppo_agent(env_id, hyp_dict, log_dir):
+    x = hyp_dict
+    return BaseAgent(env_id,
+                    exp_lr = x['exp_lr']
+                    policy_lr = x['policy_lr']
+                    val_lr = x['val_lr']
+                    vis_model = models.MODEL_REGISTRY[x['vis_model']],
+                    policy_model = models.MODEL_REGISTRY[x['policy_model']],
+                    val_model = models.MODEL_REGISTRY[x['val_model']],
+                    exp_target_model = models.MODEL_REGISTRY[x['exp_target_model']],
+                    exp_train_model = models.MODEL_REGISTRY[x['exp_train_model']],
+                    exp_net_opt_steps = x['exp_net_opt_steps'],
+                    gamma = x['gamma'],
+                    lam = x['lam'],
+                    log_dir = log_dir
+                    )
+
 class BaseAgent:
     """
     The version of PPO used for meta learning could be different than sprinting.
@@ -26,6 +43,8 @@ class BaseAgent:
 
         self.gamma = gamma
         self.lam = lam
+
+        self.log_dir = log_dir
 
     def train(self, rollouts, device):
         for _ in range(rollouts):
