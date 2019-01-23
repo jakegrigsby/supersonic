@@ -9,7 +9,20 @@ size = comm.Get_size()
 rank = comm.Get_rank()
 
 class MetaLearner:
-
+"""
+Our idea for a metalearning algorithm which consists of a few parts:
+    1) A Deep RL agent. Should be capable of starting with some initial set of weights, and training on
+        some RL environment, improving until it arrives at some (better) set of weights.
+    2) A task picker. Should look at a history of which levels in the task train set we have trained on so far
+        in order to decide which one to train on next. How it makes this decision will be left as a black-boxed
+        subroutine and is probably the key to this working. Choosing at random would transform this alg into something
+        closely resembling Reptile. The current plan is to try some basic online RL algs, where the states are going to be
+        some representation of each task (at least a task number, but probably a set of sample observations or other info).
+        The actions are a deterministic choice to stop training an agent on a level and move it to a new one. The rewards are
+        the difference between the current meta-weights (the weights the agent was initialized with) and the final weights after
+        x epochs of training the agent on that level. The idea here is that the task picker will be incentivized to choose tasks
+        it thinks the agent has 'forgotten'.
+"""
     def __init__(self, heads):
         self.heads = heads
         self.train_lvl_set = utils.load_sonic_lvl_set()
