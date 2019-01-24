@@ -4,7 +4,7 @@ import tensorflow as tf
 As part of the plan to minimize MPI complexity, most of the meta-learning/param-search algs will involve passing strings
 and numpy arrays rather than Python objects. So these neural nets should all be able to be initialized with a single string.
 The global variable MODEL_REGISTRY handles that. After a network is defined using the keras.Model subclassing API, use the
-@model('name') decorator to add it to MODEL_REGISTRY. Then any model can be initialized by calling models.MODEL_REGISTRY['name']
+@model('name') decorator to add it to MODEL_REGISTRY. Then any model can be initialized by calling get_model('name')
 """
 
 MODEL_REGISTRY = {}
@@ -14,6 +14,8 @@ def model(model_id):
         return model_class
     return register
 
+def get_model(model_id):
+    return MODEL_REGISTRY[model_id]()
 
 @model('NatureVision')
 class NatureVision(tf.keras.Model):
