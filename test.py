@@ -8,6 +8,7 @@ import environment
 import utils
 import random_agent
 import camera
+import agent
 
 class EnvironmentTestCase(unittest.TestCase):
     @classmethod
@@ -117,5 +118,28 @@ class CameraTestCase(unittest.TestCase):
         if os.path.exists('testlogs'):
             shutil.rmtree('testlogs', ignore_errors=True)
 
+class AgentTestCase(unittest.TestCase):
 
-
+    @classmethod
+    def setUpClass(cls):
+        self.agent = agent.BaseAgent('GreenHillZone.Act1', logdir='logs', name='tester')
+        if not os.path.exists('logs'):
+            os.mkdir('logs')
+    
+    def test_trains(self):
+        init_weights = self.agent.weights
+        self.agent.train(1)
+        final_weights = self.agent.weights
+        self.assertNotEqual(init_weights, final_weights) 
+    
+    def test_plays(self):
+        rew = self.agent.test(1)
+        self.assertTrue(rew > 0)
+    
+    def test_logs_recorded(self):
+        self.assertTrue(os.path.exists('logs/tester.txt'))
+    
+    @classmethod
+    def tearDownClass(cls):
+        os.remove('logs/tester.txt')
+        
