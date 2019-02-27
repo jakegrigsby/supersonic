@@ -1,5 +1,4 @@
 import csv
-import scipy
 
 def load_sonic_lvl_set(train=True):
     lvls = {}
@@ -59,6 +58,9 @@ class FrameStack:
     def stack(self):
         return self._tensor
 
+
+import scipy
+
 class Trajectory:
     """
     The storage and calculation needed for each training trajectory for a PPO
@@ -74,18 +76,20 @@ class Trajectory:
         self.i_rews = []
         self.rews = []
         self.old_act_probs = []
-        self.vals = []
+        self.vals_e = []
+        self.vals_i = []
         self.exp_targets = []
 
-    def add(self, state, rew, i_rew, exp_target, act_probs, val):
+    def add(self, state, rew, i_rew, exp_target, act_probs, val_e, val_i):
         self.states.append(state)
         self.rews.append(rew)
         self.i_rews.append(i_rew)
         self.old_act_probs.append(act_probs)
-        self.vals.append(val)
+        self.vals_e.append(val_e)
+        self.vals_i.append(val_i)
         self.exp_targets.append(exp_target)
 
-    def end_trajectory(self, gamma, lam):
+    def end_trajectory(self, gamma, lam, i_rew_coeff, e_rew_coeff):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
         #calculate advantages
         self.vals_next = self.vals[1:] + 0
@@ -97,7 +101,7 @@ class Trajectory:
         self.states = np.assarray(self.states, dtype=np.uint8)
         i_rews = np.asarray(self.discount_cumsum(self.i_rews, gamma))
         e_rews = np.asarray(self.dicount_cumsum(self.rews, gamma))
-        self.rews = i_rews + e_rews
+        self.rews = (i_rew_coeff*i_rews) + (e_rew_coeff*e_rews)
         self.exp_targets = np.asarray(self.exp_targets)
         self.old_act_probs = np.asarray(self.old_act_probs)
         
