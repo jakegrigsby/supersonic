@@ -127,4 +127,13 @@ def get_lvl_map(lvl_id):
     lvl_path = os.path.join(game, lvl_id)
     lvl_path = os.path.join(maps_dir, lvl_path) 
     img = cv2.imread(lvl_path)
-    return img
+    return np.transpose(img, (1, 0, 2)) #rotate image
+
+def get_avg_lvl_map_dims():
+    num_lvls = len(all_sonic_lvls().keys())
+    x_sizes, y_sizes = np.zeros(num_lvls), np.zeros(num_lvls)
+    for idx, lvl_id in enumerate(all_sonic_lvls().keys()):
+        lvl_map = get_lvl_map(lvl_id)
+        x_sizes[idx] = lvl_map.shape[0]
+        y_sizes[idx] = lvl_map.shape[1]
+    return (int(np.mean(x_sizes)), int(np.mean(y_sizes)))
