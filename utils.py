@@ -1,7 +1,9 @@
 import csv
+import os
 import numpy as np
 import scipy
 import json
+import cv2
 
 def load_sonic_lvl_set(train=True):
     lvls = {}
@@ -117,3 +119,12 @@ def load_hyp_dict_from_file(filename):
     with open(filename, 'r') as f:
         json_hyp_dict = json.load(f)
     return json_hyp_dict
+#########################################################################################
+def get_lvl_map(lvl_id):
+    maps_dir = os.path.join('data','lvl_maps')
+    game = get_game_from_sonic_lvl(lvl_id)
+    lvl_id = lvl_id.replace('.','') + '.png'
+    lvl_path = os.path.join(game, lvl_id)
+    lvl_path = os.path.join(maps_dir, lvl_path) 
+    img = cv2.imread(lvl_path)
+    return img

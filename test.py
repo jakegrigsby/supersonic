@@ -164,3 +164,9 @@ class TestJsonHypDict(unittest.TestCase):
     def tearDownClass(cls):
         if os.path.exists('data/hyp_dicts/test_dict.json'):
             os.remove('data/hyp_dicts/test_dict.json')
+
+class TestLevelMaps(unittest.TestCase):
+
+    def test_load_all_maps(self):
+        for lvl_id in utils.all_sonic_lvls().keys():
+            self.assertIsInstance(utils.get_lvl_map(lvl_id), np.ndarray)
