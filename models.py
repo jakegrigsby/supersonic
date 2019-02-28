@@ -9,7 +9,7 @@ The global variable MODEL_REGISTRY handles that. After a network is defined usin
 
 MODEL_REGISTRY = {}
 def model(model_id):
-    def register(model_class)
+    def register(model_class):
         MODEL_REGISTRY[model_id] = model_class
         return model_class
     return register

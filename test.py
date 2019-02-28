@@ -142,4 +142,25 @@ class AgentTestCase(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         os.remove('logs/tester.txt')
-        
+ 
+class TestJsonHypDict(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        if not os.path.exists('data/hyp_dicts'):
+            os.mkdir('data/hyp_dicts')
+
+    def test_hyp_dict_to_file(self):
+        utils.save_hyp_dict_to_file('data/hyp_dicts/test_dict.json', {'test_param':1})
+        self.assertTrue(os.path.exists('data/hyp_dicts/test_dict.json'))
+        os.remove('data/hyp_dicts/test_dict.json')
+    
+    def test_hyp_dict_from_file(self):
+        utils.save_hyp_dict_to_file('data/hyp_dicts/test_dict.json', {'test_param':1})
+        test_dict = agent.load_hyp_dict_from_file('data/hyp_dicts/test_dict.json')
+        self.assertTrue(test_dict == {'test_param':1})
+    
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.exists('data/hyp_dicts/test_dict.json'):
+            os.remove('data/hyp_dicts/test_dict.json')
