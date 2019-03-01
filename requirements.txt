@@ -1,0 +1,7 @@
+gym
+gym-retro
+numpy
+opencv-python
+sk-video
+visdom
+webcolors
