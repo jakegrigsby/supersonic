@@ -1,6 +1,7 @@
 import csv, glob, json, os, uuid, time
 
 import pandas as pd
+from visdom import Visdom
 
 COUNTER_DIGITS = 2
 
@@ -33,6 +34,17 @@ def run_num_str(run_num):
         run = '0' + run
     return run
 
+def init_visdom():
+    PORT = 8097
+    HOST = 'http://localhost'
+    try:
+        viz = Visdom(port=PORT, server=HOST)
+        return viz
+    except requests.exceptions.ConnectionError:
+        # Visdom is not running on this port
+        print('Visdom not running on {}:{}; did not connect'.format(HOST, PORT))
+        return None
+
 class Logger:
     """
     Allows users to save information to disk at the end of every Episode and Trajectory.
@@ -45,6 +57,10 @@ class Logger:
         os.makedirs(self.run_folder)
         # Keep cache of open files
         self.log_files = {}
+        # Write directly to Visdom if possible
+        self.visdom = init_visdom()
+        print('set visdom:', self.visdom)
+        self.viz_plots = {} # cache of visdom plots
 
     def _log(self, filepath, filename, dict_obj):
         print('_log {} to {}'.format(dict_obj, filepath+filename))
@@ -56,6 +72,21 @@ class Logger:
         if total_file_path not in self.log_files:
             self.log_files[total_file_path] = open(total_file_path, 'w')
         self.log_files[total_file_path].write(json.dumps(dict_obj) + '\n')
+        # Write to Visdom if possible
+        if self.visdom:
+            if total_file_path not in self.viz_plots:
+                print('new graph')
+                # add new graph to plot dict
+                self.viz_plots[total_file_path] = self.visdom.line(X=[dict_obj['episode_num']], Y=[dict_obj['max_x']], opts=dict(
+                title="max_x vs episode_num", 
+                xlabel='episode_num', 
+                ylabel='max_x'
+            ))
+            else:
+                print('append to graph')
+                plot = self.viz_plots[total_file_path]
+                # append to graph
+                self.visdom.line(X=[dict_obj['episode_num']], Y=[dict_obj['max_x']], win=plot, update='append')
 
     def log_trajectory(self, trajectory_log):
         episode_num = episode_log.episode_num

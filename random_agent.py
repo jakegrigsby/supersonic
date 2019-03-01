@@ -76,5 +76,5 @@ if __name__ == '__main__':
     x = SonicRandomAgent('GreenHillZone.Act1', log_filepath='logs/')
     cam = camera.Camera(x)
     cam.start_recording('testvideo.mov')
-    x.run(40, render=True, max_steps=1000)#4500)
+    x.run(40, render=True, max_steps=100)#4500)
     cam.stop_recording()
