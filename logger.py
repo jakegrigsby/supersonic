@@ -1,8 +1,10 @@
 import csv, glob, json, os, time, webcolors
 
+from datetime import datetime
 import numpy as np
 import pandas as pd
 from visdom import Visdom
+
 
 COUNTER_DIGITS = 2
 
@@ -38,13 +40,8 @@ def run_num_str(run_num):
 def init_visdom():
     PORT = 8097
     HOST = 'http://localhost'
-    try:
-        viz = Visdom(port=PORT, server=HOST)
-        return viz
-    except requests.exceptions.ConnectionError:
-        # Visdom is not running on this port
-        print('Visdom not running on {}:{}; did not connect'.format(HOST, PORT))
-        return None
+    viz = Visdom(port=PORT, server=HOST)
+    return viz
 
 class Logger:
     """
@@ -53,11 +50,17 @@ class Logger:
     Eventually, this will be fed into a Visdom dashboard that can read live from each file and display all the data.
     """
 
+    '''The time to wait before trying to connect to Visdom again, in seconds.'''
+    MAX_VISDOM_TIMEOUT = 5 # 60 * 5
+
+    ''' The line plots to create for each episode.'''
     EPISODE_LINE_PLOTS = [
         ('episode_num', 'max_x', 'blue'),
         ('episode_num', 'reward', 'green'),
         ('episode_num', 'score', 'purple'),
     ]
+
+
 
     def __init__(self, folder_base):
         # Make run directory
@@ -67,9 +70,14 @@ class Logger:
         self.log_files = {}
         # Write directly to Visdom if possible
         self.visdom = init_visdom()
-        self.viz_plots = {} # cache of visdom plots
+        # Maintain cache of visdom plots
+        self.viz_plots = {}
 
     def plot_episode_visdom(self, filename, dict_obj):
+        # If we don't have visdom session, first try and reconnect
+        if not self.visdom.check_connection():
+            return
+        # Then iterate through and create all plots
         for x_key, y_key, line_color in Logger.EPISODE_LINE_PLOTS:
             plot_title = '{} vs. {}'.format(y_key, x_key)
             plot_name = filename + plot_title
@@ -113,7 +121,7 @@ class Logger:
 
 
     def _log(self, filepath, filename, dict_obj):
-        print('_log {} to {}'.format(dict_obj, filepath+filename))
+        # print('_log {} to {}'.format(dict_obj, filepath+filename))
         total_file_path = filepath + filename
         try:
             os.makedirs(filepath)
