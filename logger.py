@@ -1,5 +1,6 @@
-import csv, glob, json, os, uuid, time
+import csv, glob, json, os, time, webcolors
 
+import numpy as np
 import pandas as pd
 from visdom import Visdom
 
@@ -51,6 +52,13 @@ class Logger:
 
     Eventually, this will be fed into a Visdom dashboard that can read live from each file and display all the data.
     """
+
+    EPISODE_LINE_PLOTS = [
+        ('episode_num', 'max_x', 'blue'),
+        ('episode_num', 'reward', 'green'),
+        ('episode_num', 'score', 'purple'),
+    ]
+
     def __init__(self, folder_base):
         # Make run directory
         self.run_folder = get_next_run_folder(folder_base + '_')
@@ -59,8 +67,50 @@ class Logger:
         self.log_files = {}
         # Write directly to Visdom if possible
         self.visdom = init_visdom()
-        print('set visdom:', self.visdom)
         self.viz_plots = {} # cache of visdom plots
+
+    def plot_episode_visdom(self, filename, dict_obj):
+        for x_key, y_key, line_color in Logger.EPISODE_LINE_PLOTS:
+            plot_title = '{} vs. {}'.format(y_key, x_key)
+            plot_name = filename + plot_title
+            if plot_name in self.viz_plots:
+                plot = self.viz_plots[plot_name]
+                opts = None
+            else:
+                plot = None
+                # Convert 'navy' to (0,0,128)
+                if isinstance(line_color, str):
+                    line_color = webcolors.name_to_rgb(line_color)
+                line_color_arg = np.array([line_color])
+                opts = dict(
+                    title=plot_title, 
+                    xlabel=x_key, 
+                    ylabel=y_key,
+                    linecolor=line_color_arg,
+                )
+
+            x = dict_obj[x_key]
+            y = dict_obj[y_key]
+            self.plot_visdom_line(plot_name, x, y, plot=plot, opts=opts)
+
+    def plot_visdom_line(self, plot_name, x, y, plot=None, opts=None):
+        ''' Creates or appends an (x,y) coordinate to a line plot in Visdom. '''
+        if opts:
+            self.viz_plots[plot_name] = self.visdom.line(
+                X=[x], 
+                Y=[y], 
+                opts=opts
+            )
+        elif plot:
+            self.visdom.line(
+                X=[x], 
+                Y=[y], 
+                win=plot, 
+                update='append')
+        else:
+            raise ValueError('Need to provide a plot to append to or options for a new one')
+
+
 
     def _log(self, filepath, filename, dict_obj):
         print('_log {} to {}'.format(dict_obj, filepath+filename))
@@ -72,21 +122,7 @@ class Logger:
         if total_file_path not in self.log_files:
             self.log_files[total_file_path] = open(total_file_path, 'w')
         self.log_files[total_file_path].write(json.dumps(dict_obj) + '\n')
-        # Write to Visdom if possible
-        if self.visdom:
-            if total_file_path not in self.viz_plots:
-                print('new graph')
-                # add new graph to plot dict
-                self.viz_plots[total_file_path] = self.visdom.line(X=[dict_obj['episode_num']], Y=[dict_obj['max_x']], opts=dict(
-                title="max_x vs episode_num", 
-                xlabel='episode_num', 
-                ylabel='max_x'
-            ))
-            else:
-                print('append to graph')
-                plot = self.viz_plots[total_file_path]
-                # append to graph
-                self.visdom.line(X=[dict_obj['episode_num']], Y=[dict_obj['max_x']], win=plot, update='append')
+
 
     def log_trajectory(self, trajectory_log):
         episode_num = episode_log.episode_num
@@ -96,7 +132,10 @@ class Logger:
     def log_episode(self, episode_log):
         episode_num = episode_log.episode_num
         filename = self.run_folder
-        self._log(filename, 'episode_logs.csv', vars(episode_log))
+        episode_log_dict = vars(episode_log)
+        self._log(filename, 'episode_logs.csv', episode_log_dict)
+        # update Visdom plots
+        self.plot_episode_visdom(filename, episode_log_dict)
 
     def close(self):
         for log_file in self.log_files:
