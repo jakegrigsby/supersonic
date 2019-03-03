@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from copy import deepcopy
 
 import environment
 import utils
@@ -19,7 +20,7 @@ class BaseAgent:
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
 
     Needs a lot of testing and probably debugging. I wrote up a quick outline of the training loop.
-    
+
     Also TODO is all the calculations of metric we want to log, and the actual logging at the end of each episode.
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
@@ -58,9 +59,11 @@ class BaseAgent:
         self.log_dir = log_dir
 
     def train(self, rollouts, device):
+        past_trajectory = None
         for _ in range(rollouts):
-            trajectory = self.rollout(self.rollout_length)
+            trajectory = self.rollout(self.rollout_length, past_trajectory)
             self.update_models(trajectory, device)
+            past_trajectory = deepcopy(trajectory)
 
     def test(self, episodes, max_ep_steps=4500):
         for ep in range(episodes):
@@ -70,19 +73,19 @@ class BaseAgent:
                 action = self.choose_action(obs)
                 obs, rew, done, info = self.env.step(action)
 
-    def rollout(steps):
+    def rollout(steps, past_trajectory=None):
         """
         Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
         """
         obs, e_rew, done, info = self.env.reset()
         step = 0
-        trajectory = utils.Trajectory()
+        trajectory = utils.Trajectory(past_trajectory)
         while step < steps and not done:
             action_probs, val_e, val_i = self.choose_action_get_value(obs)
             action = np.argmax(action_probs)
             obs, e_rew, done, info = self.env.step(action)
-            i_rew, exp_target = self.calc_intrinsic_reward(obs)        
-            trajectory.add(obs, e_rew, i_rew, exp_target, action_probs, val_e, val_i) 
+            i_rew, exp_target = self.calc_intrinsic_reward(obs)
+            trajectory.add(obs, e_rew, i_rew, exp_target, action_probs, val_e, val_i)
             step += 1
         trajectory.end_trajectory(self.gamma, self.lam, self.i_rew_coeff, self.e_rew_coeff)
         return trajectory
@@ -144,7 +147,7 @@ class BaseAgent:
             #create new training set, and send old one to garbage collection
             dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.rews, trajectory.old_act_probs, trajectory.gaes))
             dataset.shuffle(100)
-            
+
             #update policy and value nets
             p_optimizer = tf.train.AdamOptimizer(learning_rate=self.ppo_lr)
             v_optimizer = tf.train.AdamOptimizer(learning_rate=self.ppo_lr)
@@ -167,4 +170,4 @@ class BaseAgent:
                 grads = tape.gradient(v_loss, [self.viz_model.variables, self.val_model.variables])
                 v_optimizer.apply_gradients(zip(grads, [self.vis_model.variables, self.val_model_e.variables, self.val_model_i.variables]))
                 del tape
-                step += 1 
+                step += 1

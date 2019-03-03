@@ -27,7 +27,7 @@ def all_sonic_lvls():
 ############################################################################################
 
 class FrameStack:
-    
+
     def __init__(self, capacity, default_frame):
         self.capacity = capacity
         self.default_frame = default_frame
@@ -51,7 +51,7 @@ class FrameStack:
 
     @property
     def shape(self):
-        return self._tensor.shape        
+        return self._tensor.shape
 
     @property
     def ndim(self):
@@ -69,11 +69,11 @@ class Trajectory:
     agent.
 
     The trajectory is initialized. Each step adds information. Then end_trajectory
-    is called and all the information needed to update the RND networks is 
+    is called and all the information needed to update the RND networks is
     calculated and made available.
     """
-    def __init__(self):
-        #keeping track of attributes used in update_models
+    def __init__(self, past_trajectory=None):
+        # keeping track of attributes used in update_models
         self.states = []
         self.i_rews = []
         self.rews = []
@@ -81,6 +81,17 @@ class Trajectory:
         self.vals_e = []
         self.vals_i = []
         self.exp_targets = []
+
+        # if given a past trajectory to resume from, the first elements in this trajectory will be the last from the old one
+        if past_trajectory != None:
+            i = len(past_trajectory.states) - 1
+            self.states.append(past_trajectory.states[i])
+            self.i_rews.append(past_trajectory.i_rews[i])
+            self.rews.append(past_trajectory.rews[i])
+            self.old_act_probs.append(past_trajectory.old_act_probs[i])
+            self.vals_e.append(past_trajectory.vals_e[i])
+            self.vals_i.append(past_trajectory.vals_i[i])
+            self.exp_targets.append(past_trajectory.exp_targets[i])
 
     def add(self, state, rew, i_rew, exp_target, act_probs, val_e, val_i):
         self.states.append(state)
@@ -106,7 +117,7 @@ class Trajectory:
         self.rews = (i_rew_coeff*i_rews) + (e_rew_coeff*e_rews)
         self.exp_targets = np.asarray(self.exp_targets)
         self.old_act_probs = np.asarray(self.old_act_probs)
-        
+
     def discount_cumsum(self, discount):
         return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 
@@ -125,7 +136,7 @@ def get_lvl_map(lvl_id):
     game = get_game_from_sonic_lvl(lvl_id)
     lvl_id = lvl_id.replace('.','') + '.png'
     lvl_path = os.path.join(game, lvl_id)
-    lvl_path = os.path.join(maps_dir, lvl_path) 
+    lvl_path = os.path.join(maps_dir, lvl_path)
     img = cv2.imread(lvl_path)
     return np.transpose(img, (1, 0, 2)) #rotate image
 
