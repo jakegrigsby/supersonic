@@ -51,12 +51,15 @@ class BaseAgent:
 
         self.rollout_length = rollout_length
 
+    #depcreated. transition to new logging api.
+        """
         if not log_dir:
             # there is probably a better way to name these
             id = uuid.uuid4()
             log_dir = os.path.join('logs', id)
             os.mkdir(log_dir)
         self.log_dir = log_dir
+        """
 
     def train(self, rollouts, device):
         past_trajectory = None
@@ -79,8 +82,8 @@ class BaseAgent:
         """
         obs, e_rew, done, info = self.env.reset()
         step = 0
-        trajectory = utils.Trajectory(past_trajectory)
-        while step < steps and not done:
+        trajectory = utils.Trajectory()
+        while step < steps:
             action_probs, val_e, val_i = self.choose_action_get_value(obs)
             action = np.argmax(action_probs)
             obs, e_rew, done, info = self.env.step(action)
@@ -168,6 +171,6 @@ class BaseAgent:
                 grads = tape.gradient(p_loss, [self.vis_model.variables, self.policy_model.variables])
                 p_optimizer.apply_gradients(zip(grads, [self.vis_model.variables, self.policy_model.variables]), global_step=tf.train.get_or_create_global_step())
                 grads = tape.gradient(v_loss, [self.viz_model.variables, self.val_model.variables])
-                v_optimizer.apply_gradients(zip(grads, [self.vis_model.variables, self.val_model_e.variables, self.val_model_i.variables]))
+                v_optimizer.apply_gradients(zip(grads, [self.vis_model.variables, self.val_model_e.variables, self.val_model_i.variables])), global_step=tf.train.get_or_create_global_step())
                 del tape
                 step += 1

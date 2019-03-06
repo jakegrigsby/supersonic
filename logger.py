@@ -50,10 +50,10 @@ class Logger:
     Eventually, this will be fed into a Visdom dashboard that can read live from each file and display all the data.
     """
 
-    '''The time to wait before trying to connect to Visdom again, in seconds.'''
+    #The time to wait before trying to connect to Visdom again, in seconds
     MAX_VISDOM_TIMEOUT = 5 # 60 * 5
 
-    ''' The line plots to create for each episode.'''
+    #The line plots to create for each episode
     EPISODE_LINE_PLOTS = [
         ('episode_num', 'max_x', 'blue'),
         ('episode_num', 'reward', 'green'),

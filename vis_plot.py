@@ -30,7 +30,7 @@ def live_update_plots(viz):
 	# @TODO: implement Sockets to talk to server
 
 
-def main():
+if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description='Visdom plotter arguments')
 	parser.add_argument('-port', metavar='port', type=int, default=VISDOM_PORT,
 	                    help='port the visdom server is running on.')
@@ -54,5 +54,3 @@ def main():
 
 
 # viz.line(Y=np.random.rand(10), opts=dict(showlegend=True))
-
-main()

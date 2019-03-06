@@ -122,6 +122,7 @@ class Trajectory:
         return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 
 #########################################################################################
+
 def save_hyp_dict_to_file(filename, hyp_dict):
     with open(filename, 'w') as f:
         json_hyp_dict = json.dump(hyp_dict, f)
@@ -130,7 +131,9 @@ def load_hyp_dict_from_file(filename):
     with open(filename, 'r') as f:
         json_hyp_dict = json.load(f)
     return json_hyp_dict
+
 #########################################################################################
+
 def get_lvl_map(lvl_id):
     maps_dir = os.path.join('data','lvl_maps')
     game = get_game_from_sonic_lvl(lvl_id)
