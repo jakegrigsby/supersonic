@@ -63,27 +63,6 @@ class FrameStackTestCase(unittest.TestCase):
         x = self.frames[0]
         self.assertTrue( np.array_equal(x, y))
 
-class EpisodeLogTestCase(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        if not os.path.exists('testlogs'):
-            os.mkdir('testlogs')
-
-    def setUp(self):
-        self.agent = random_agent.SonicRandomAgent('GreenHillZone.Act1','testlogs/')
-        self.agent.run(10)
-
-    def test_logs(self):
-        df = self.agent.log.make_dataframe()
-
-    def tearDown(self):
-        del self.agent
-
-    @classmethod
-    def tearDownClass(cls):
-        if os.path.exists('testlogs'):
-            shutil.rmtree('testlogs', ignore_errors=True)
-
 class CameraTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -120,28 +99,22 @@ class CameraTestCase(unittest.TestCase):
 
 class AgentTestCase(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        self.agent = agent.BaseAgent('GreenHillZone.Act1', logdir='logs', name='tester')
-        if not os.path.exists('logs'):
-            os.mkdir('logs')
-
     def test_trains(self):
-        init_weights = self.agent.weights
-        self.agent.train(1)
-        final_weights = self.agent.weights
-        self.assertNotEqual(init_weights, final_weights)
+        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='testlog')
+        test_agent.train(1)
 
     def test_plays(self):
-        rew = self.agent.test(1)
+        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='testlog')
+        rew = test_agent.test(1)
         self.assertTrue(rew > 0)
 
     def test_logs_recorded(self):
-        self.assertTrue(os.path.exists('logs/tester.txt'))
+        self.assertTrue(os.path.exists('logs/testlog/run00.txt'))
 
-    @classmethod
-    def tearDownClass(cls):
-        os.remove('logs/tester.txt')
+    def tearDown(self):
+        test_log_dir = 'logs/testlogs'
+        if os.path.exists(test_log_dir):
+            shutil.rmtree('logs/testlogs')
 
 class TestJsonHypDict(unittest.TestCase):
 

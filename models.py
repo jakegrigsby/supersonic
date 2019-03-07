@@ -16,7 +16,7 @@ def model(model_id):
     return register
 
 def get_model(model_id):
-    return MODEL_REGISTRY[model_id]()
+    return MODEL_REGISTRY[model_id]
 
 @model('NatureVision')
 class NatureVision(tf.keras.Model):
