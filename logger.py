@@ -63,6 +63,7 @@ class Logger:
 
 
     def __init__(self, folder_base):
+        print(folder_base)
         # Make run directory
         self.run_folder = get_next_run_folder(folder_base + '_')
         os.makedirs(self.run_folder)

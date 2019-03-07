@@ -21,6 +21,9 @@ class EnvironmentTestCase(unittest.TestCase):
         self.assertIsInstance(obs, np.ndarray)
         self.assertTrue(obs.shape[0] == obs.shape[1])
         self.assertTrue(obs.ndim == 3)
+    
+    def test_env_reset(self):
+        self.assertTrue(len(self.agent.env.reset()), 84)
 
     def test_run(self):
         self.agent.run(1, max_steps=10)

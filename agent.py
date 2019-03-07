@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from copy import deepcopy
-
+import os
 import environment
 import utils
 import models
@@ -29,7 +29,7 @@ class BaseAgent:
                     rollout_length=128, ppo_net_opt_steps=None, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.25, lam=.99):
 
         self.env = environment.auto_env(env_id)
-        self.most_recent_step = self.env.reset()
+        self.most_recent_step = self.env.reset(), 0, False, {}
         self.nb_actions = self.env.action_space.n
 
         self.exp_lr = exp_lr
@@ -54,9 +54,12 @@ class BaseAgent:
 
         self.rollout_length = rollout_length
 
-        if not log_dir:
+        if log_dir and not os.path.exists(os.path.join('logs', log_dir)):
             log_dir = os.mkdir(os.path.join('logs',log_dir))
-        else: log_dir = 'logs'
+        else:
+             log_dir = 'logs'
+             if not os.path.exists('logs'):
+                 os.mkdir('logs')
         self.log_dir = log_dir
         self.logger = logger.Logger(self.log_dir)
 
@@ -71,7 +74,7 @@ class BaseAgent:
         cum_rew = 0
         for ep in range(episodes):
             step = 0
-            obs, rew, done, info = self.env.reset()
+            obs, rew, done, info = self.env.reset(), 0, False, {}
             while step < max_ep_steps and not done:
                 action = self.choose_action(obs)
                 obs, rew, done, info = self.env.step(action)
@@ -83,11 +86,14 @@ class BaseAgent:
         Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
         """
         #pick up where the last rollout left off, unless we need to reset the environment
-        obs, e_rew, done, info = self.most_recent_step if not self.most_recent_step[2] else self.env.reset()
+        if not self.most_recent_step[2]:
+            obs, e_rew, done, info = self.most_recent_step
+        else:
+            obs, e_rew, done, info = self.env.reset(), 0, False, {}
         step = 0
         trajectory = utils.Trajectory(past_trajectory)
         while step < steps:
-            if done: obs, e_rew, done, info = self.env.reset() #trajectories roll through the end of episodes
+            if done: obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
             action_probs, val_e, val_i = self.choose_action_get_value(obs)
             action = np.argmax(action_probs)
             obs, e_rew, done, info = self.env.step(action)
@@ -155,6 +161,7 @@ class BaseAgent:
         Run the entire network and return the action probability distribution (not just the chosen action) as well as the values
         from the value net. Used during training -  when more information is needed.
         """
+        print(type(obs))
         features = self.vis_model(obs)
         action_probs = self.policy_model(features)
         val_e = self.val_model_e(features)
