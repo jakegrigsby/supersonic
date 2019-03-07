@@ -11,17 +11,13 @@ import camera
 import agent
 
 class EnvironmentTestCase(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        if not os.path.exists('testlogs'):
-            os.mkdir('testlogs')
 
     def setUp(self):
-        self.agent = random_agent.SonicRandomAgent('GreenHillZone.Act1', 'testlogs/')
+        self.agent = random_agent.SonicRandomAgent('GreenHillZone.Act1')
 
     def test_observation_space_is_frame_stack(self):
         self.agent.env.reset()
-        obs, *_ = self.agent.env.step(self.agent.env.action_space.sample())
+        obs, rew, done, info = self.agent.env.step(self.agent.env.action_space.sample())
         self.assertIsInstance(obs, np.ndarray)
         self.assertTrue(obs.shape[0] == obs.shape[1])
         self.assertTrue(obs.ndim == 3)
@@ -31,11 +27,6 @@ class EnvironmentTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.agent = None
-
-    @classmethod
-    def tearDownClass(cls):
-        if os.path.exists('testlogs'):
-            shutil.rmtree('testlogs',ignore_errors=True)
 
 class FrameStackTestCase(unittest.TestCase):
 

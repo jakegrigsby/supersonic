@@ -173,8 +173,8 @@ class DynamicNormalize(gym.Wrapper):
         self.o_mean, self.o_m2, self.o_variance = [np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float64))] * 3
         self.r_mean, self.r_m2, self.r_var = .0, .0, .0
 
-    def reset(self):
-        return self.env.reset()
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
 
 class FrameStackWrapper(gym.Wrapper):
     """

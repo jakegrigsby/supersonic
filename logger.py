@@ -19,7 +19,7 @@ COUNTER_DIGITS = 2
 def get_next_run_folder(folder_base):
     folders = glob.glob(folder_base + '*')
     folders.sort()
-    print(folder_base, 'folders:', folders)
+    #print(folder_base, 'folders:', folders)
 
     if not folders:
         last_run = -1
