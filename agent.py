@@ -19,14 +19,12 @@ def ppo_agent(env_id, hyp_dict, log_dir):
 class BaseAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
-
-    Needs a lot of testing and probably debugging. I wrote up a quick outline of the training loop.
-
-    Also TODO is all the calculations of metric we want to log, and the actual logging at the end of each episode.
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
                     rollout_length=128, ppo_net_opt_steps=None, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.25, lam=.99):
+        
+        tf.enable_eager_execution()
 
         self.env = environment.auto_env(env_id)
         self.most_recent_step = self.env.reset(), 0, False, {}
@@ -146,6 +144,7 @@ class BaseAgent:
         Choose an action based on the current observation. Saves computation by not running the value net,
         which makes it a good choice for testing the agent.
         """
+        obs = np.expand_dims(obs, -1)
         features = self.vis_model(obs)
         actions = self.policy_model(features)
         return np.argmax(actions)
@@ -155,7 +154,7 @@ class BaseAgent:
         Run the entire network and return the action probability distribution (not just the chosen action) as well as the values
         from the value net. Used during training -  when more information is needed.
         """
-        print(type(obs))
+        obs = np.expand_dims(obs, -1)
         features = self.vis_model(obs)
         action_probs = self.policy_model(features)
         val_e = self.val_model_e(features)
