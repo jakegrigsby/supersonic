@@ -185,7 +185,7 @@ class FrameStackWrapper(gym.Wrapper):
     def __init__(self, env, k=4):
         super().__init__(env)
         self.k = k
-        self.frames = utils.FrameStack(capacity=k, default_frame= self.env.reset())
+        self.frames = utils.FrameStack(capacity=k, default_frame=self.env.reset())
 
     def reset(self):
         self.env.reset()
@@ -199,7 +199,10 @@ class FrameStackWrapper(gym.Wrapper):
     
     @property
     def stack(self):
-        return self.frames.stack
+        """
+        We convert to float32 at the last moment, sacrificing accuracy during obs normalization
+        """
+        return self.frames.stack.astype(np.float32)
 
         
 class RewardScaler(gym.RewardWrapper):
