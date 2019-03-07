@@ -5,6 +5,7 @@ from copy import deepcopy
 import environment
 import utils
 import models
+import logger
 
 def ppo_agent(env_id, hyp_dict, log_dir):
     """
@@ -28,6 +29,7 @@ class BaseAgent:
                     rollout_length=128, ppo_net_opt_steps=None, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.25):
 
         self.env = environemnt.auto_env(env_id)
+        self.most_recent_step = self.env.reset()
 
         self.exp_lr = exp_lr
         self.ppo_lr = ppo_lr
@@ -51,15 +53,10 @@ class BaseAgent:
 
         self.rollout_length = rollout_length
 
-    #depcreated. transition to new logging api.
-        """
         if not log_dir:
-            # there is probably a better way to name these
-            id = uuid.uuid4()
-            log_dir = os.path.join('logs', id)
             os.mkdir(log_dir)
         self.log_dir = log_dir
-        """
+        self.logger = logger.Logger(self.log_dir)
 
     def train(self, rollouts, device):
         past_trajectory = None
@@ -80,18 +77,64 @@ class BaseAgent:
         """
         Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
         """
-        obs, e_rew, done, info = self.env.reset()
+        #pick up where the last rollout left off, unless we need to reset the environment
+        obs, e_rew, done, info = self.most_recent_step if not self.most_recent_step[2] else self.env.reset()
         step = 0
-        trajectory = utils.Trajectory()
+        trajectory = utils.Trajectory(past_trajectory)
         while step < steps:
+            if done: obs, e_rew, done, info = self.env.reset() #trajectories roll through the end of episodes
             action_probs, val_e, val_i = self.choose_action_get_value(obs)
             action = np.argmax(action_probs)
             obs, e_rew, done, info = self.env.step(action)
             i_rew, exp_target = self.calc_intrinsic_reward(obs)
             trajectory.add(obs, e_rew, i_rew, exp_target, action_probs, val_e, val_i)
+            #update episode statistics
+            self.episode_stats(action, e_rew, i_rew, done, info)
             step += 1
+        self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.gamma, self.lam, self.i_rew_coeff, self.e_rew_coeff)
         return trajectory
+    
+    def episode_stats(self, action, e_rew, i_rew, done, info):
+        action_count = [0 for i in range(self.env.nb_actions)]
+        cum_rew_e, cum_rew_i = 0, 0
+        furthest_point = (0,0)
+        death_coords = []
+        current_lives = 3
+        episode_num += 1
+        training_steps = 0
+
+        def update_ep_stats(action, e_rew, i_rew, info, done):
+            action_count[action] += 1
+            cum_rew_e += e_rew
+            cum_rew_i += i_rew
+            training_steps += 1
+            if info['lives'] < current_lives:
+                current_lives -= 1
+                current_pos = (info['screen_x'], info['screen_y'])
+                death_coords.append(current_pos)
+                furthest_point = max(furthest_point, current_pos)
+            if done:
+                episode_dict = {'episode_num':episode_num,
+                                'death_coords':death_coords,
+                                'training_steps':training_steps,
+                                'max_x':furthest_point[0]
+                                'score':info['score'],
+                                'external_reward':cum_rew_e,
+                                'internal_reward':cum_rew_i,}
+                episode_log = logger.EpisodeLog(episode_dict)
+                self.logger.log_episode(episode_log)
+                reset_stats()
+        
+        def reset_stats():
+            action_count = [0 for i in range(self.env.nb_actions)]
+            cum_rew_e, cum_rew_i = 0, 0
+            furthest_point = (0,0)
+            death_coords = []
+            current_lives = 3
+            episode_num += 1
+            training_steps = 0
+
 
     def choose_action(self, obs):
         """

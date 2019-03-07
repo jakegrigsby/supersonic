@@ -155,7 +155,7 @@ class EpisodeLog:
     """
     Contains information about one training run within a specific episode.
     """
-    required_params = ['episode_num', 'death_coords', 'training_steps', 'max_x', 'score', 'reward']
+    required_params = ['episode_num', 'death_coords', 'training_steps', 'max_x', 'score', 'external_reward', 'internal_reward']
     def __init__(self, params):
         for required_param in self.required_params: 
             if required_param not in params: 
@@ -171,7 +171,8 @@ class EpisodeLog:
         # The max score so far
         self.score = params['score']
         # The reward from this episode
-        self.reward = params['reward']
+        self.external_reward = params['external_reward']
+        self.internal_reward = params['internal_reward']
         # @TODO: implement action distribution, video playback buffer
 
     # Function __dir()___ which list all  
