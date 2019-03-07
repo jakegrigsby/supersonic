@@ -54,13 +54,7 @@ class BaseAgent:
 
         self.rollout_length = rollout_length
 
-        if log_dir and not os.path.exists(os.path.join('logs', log_dir)):
-            log_dir = os.mkdir(os.path.join('logs',log_dir))
-        else:
-             log_dir = 'logs'
-             if not os.path.exists('logs'):
-                 os.mkdir('logs')
-        self.log_dir = log_dir
+        self.log_dir = os.path.join('logs',log_dir)
         self.logger = logger.Logger(self.log_dir)
 
     def train(self, rollouts, device='/cpu:0'):

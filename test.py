@@ -93,22 +93,26 @@ class CameraTestCase(unittest.TestCase):
 
 class AgentTestCase(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        test_log_path = os.path.join('logs','tests')
+        if not os.path.exists(test_log_path):
+            os.mkdir(test_log_path)
+
     def test_trains(self):
-        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='testlog')
+        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog')
         test_agent.train(1)
 
     def test_plays(self):
-        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='testlog')
+        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog')
         rew = test_agent.test(1)
         self.assertTrue(rew > 0)
 
-    def test_logs_recorded(self):
-        self.assertTrue(os.path.exists('logs/testlog/run00.txt'))
-
-    def tearDown(self):
-        test_log_dir = 'logs/testlogs'
+    @classmethod
+    def tearDownClass(cls):
+        test_log_dir = 'logs/tests'
         if os.path.exists(test_log_dir):
-            shutil.rmtree('logs/testlogs')
+            shutil.rmtree(test_log_dir)
 
 class TestJsonHypDict(unittest.TestCase):
 
