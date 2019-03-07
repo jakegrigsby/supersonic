@@ -58,27 +58,26 @@ class FrameStackTestCase(unittest.TestCase):
         self.assertTrue( np.array_equal(x, y))
 
 class CameraTestCase(unittest.TestCase):
+
     @classmethod
     def setUpClass(cls):
-        if not os.path.exists('testvids'):
-            os.mkdir('testvids')
-        if not os.path.exists('testlogs'):
-            os.mkdir('testlogs')
+        if not os.path.exists('logs/testvids'):
+            os.mkdir('logs/testvids')
 
     def setUp(self):
-        self.x = random_agent.SonicRandomAgent('GreenHillZone.Act1', 'testlogs')
+        self.x = random_agent.SonicRandomAgent('GreenHillZone.Act1')
         self.cam = camera.Camera(self.x, True, 5)
 
     def test_vanilla_record(self):
-        self.cam.record('testvids/testvideo.mp4')
+        self.cam.record('logs/testvids/testvideo.mp4')
         self.x.run(1, max_steps=5)
         self.cam.stop_recording()
-        self.assertTrue(os.path.exists('testvids/testvideo.mp4'))
+        self.assertTrue(os.path.exists('logs/testvids/testvideo.mp4'))
 
     def test_record_that(self):
         self.x.run(1, 5)
-        self.cam.record_that('testvids/testrecordthat.mp4')
-        self.assertTrue(os.path.exists('testvids/testrecordthat.mp4'))
+        self.cam.record_that('logs/testvids/testrecordthat.mp4')
+        self.assertTrue(os.path.exists('logs/testvids/testrecordthat.mp4'))
 
     def tearDown(self):
        del self.x
@@ -86,10 +85,8 @@ class CameraTestCase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if os.path.exists('testvids'):
-            shutil.rmtree('testvids', ignore_errors=True)
-        if os.path.exists('testlogs'):
-            shutil.rmtree('testlogs', ignore_errors=True)
+        if os.path.exists('logs/testvids'):
+            shutil.rmtree('logs/testvids', ignore_errors=True)
 
 class AgentTestCase(unittest.TestCase):
 
@@ -114,7 +111,7 @@ class AgentTestCase(unittest.TestCase):
         if os.path.exists(test_log_dir):
             shutil.rmtree(test_log_dir)
 
-class TestJsonHypDict(unittest.TestCase):
+class JsonHyptDictTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -136,7 +133,7 @@ class TestJsonHypDict(unittest.TestCase):
         if os.path.exists('data/hyp_dicts/test_dict.json'):
             os.remove('data/hyp_dicts/test_dict.json')
 
-class TestLevelMaps(unittest.TestCase):
+class LvlMapsTestCase(unittest.TestCase):
 
     def test_load_all_maps(self):
         for lvl_id in utils.all_sonic_lvls().keys():
