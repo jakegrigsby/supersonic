@@ -186,7 +186,7 @@ class BaseAgent:
             #update exploration net
             optimizer = tf.train.AdamOptimizer(learning_rate=self.exp_lr)
             step = 0
-            for (batch, (state, target)) in enumerate(exp_dataset.take(64)):
+            for (batch, (state, target)) in enumerate(dataset.take(64)):
                 if step > self.exp_net_opt_steps: break
                 with tf.GradientTape() as tape:
                     loss = tf.losses.mean_squared_error(target, self.exp_train_model(state))

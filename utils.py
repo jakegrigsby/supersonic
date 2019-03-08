@@ -101,25 +101,37 @@ class Trajectory:
         self.vals_e.append(val_e)
         self.vals_i.append(val_i)
         self.exp_targets.append(exp_target)
+    
+    def _lists_to_ndarrays(self):
+        self.states = np.asarray(self.states)
+        self.rew_i = np.asarray(self.rews_i)
+        self.rews_e = np.asarray(self.rews_e)
+        self.old_act_probs = np.asarray(self.old_act_probs)
+        self.vals_e = np.asarray(self.vals_e)
+        self.vals_i = np.asarray(self.vals_i)
+        self.exp_targets = np.asarray(self.exp_targets)
+        self.vals_next_e = np.asarray(self.vals_next_e)
+        self.vals_next_i = np.asarray(self.vals_next_i)
 
     def end_trajectory(self, gamma_i, gamma_e, lam, i_rew_coeff, e_rew_coeff):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
         #calculate advantages
         self.vals_next_e = self.vals_e[1:] + [0]
         self.vals_next_i = self.vals_i[1:] + [0]
+        self._lists_to_ndarrays()
         deltas = self.rews_e[:-1] + gamma_e * self.vals_next_e[1:] - self.vals_e[:-1]
         e_adv = self.discount_cumsum(deltas, gamma_e * lam)
         deltas = self.rew_i[:-1] + gamma_i * self.vals_next_i[1:] - self.vals_i[:-1]
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
         self.gaes = np.asarray(e_adv) + np.asarray(i_adv)
-        self.states = np.assarray(self.states, dtype=np.float32)
+        self.states = np.asarray(self.states, dtype=np.float32)
         i_rews = np.asarray(self.discount_cumsum(self.rews_i, gamma_i))
-        e_rews = np.asarray(self.dicount_cumsum(self.rews_e, gamma_e))
+        e_rews = np.asarray(self.discount_cumsum(self.rews_e, gamma_e))
         self.rews = (i_rew_coeff*i_rews) + (e_rew_coeff*e_rews)
         self.exp_targets = np.asarray(self.exp_targets)
         self.old_act_probs = np.asarray(self.old_act_probs)
 
-    def discount_cumsum(self, discount):
+    def discount_cumsum(self, x, discount):
         return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 
 #########################################################################################
