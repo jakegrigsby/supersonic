@@ -94,7 +94,7 @@ class Trajectory:
             self.exp_targets.append(past_trajectory.exp_targets[i])
 
     def add(self, state, rew_e, rew_i, exp_target, act_probs, val_e, val_i):
-        self.states.append(state)
+        self.states.append(np.squeeze(state, axis=0))
         self.rews_e.append(rew_e)
         self.rews_i.append(rew_i)
         self.old_act_probs.append(act_probs)

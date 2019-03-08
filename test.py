@@ -100,7 +100,7 @@ class AgentTestCase(unittest.TestCase):
             os.mkdir(test_log_path)
 
     def test_trains(self):
-        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog', rollout_length=10)
+        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog', rollout_length=32)
         test_agent.train(1)
 
     def test_plays(self):

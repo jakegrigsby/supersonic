@@ -22,7 +22,8 @@ class BaseAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=None, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.25, lam=.99):
+                    rollout_length=128, ppo_net_opt_steps=None, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.25, lam=.99, exp_batch_size=64,
+                    ppo_batch_size=64):
         
         tf.enable_eager_execution()
 
@@ -40,9 +41,11 @@ class BaseAgent:
         self.exp_target_model = models.get_model(exp_target_model)()
         self.exp_train_model = models.get_model(exp_train_model)()
 
-        self.exp_net_opt_steps = exp_net_opt_steps if exp_net_opt_steps else int(4 * (rollout_length * exp_train_prop))
+        self.exp_net_opt_steps = exp_net_opt_steps if exp_net_opt_steps else int((rollout_length * exp_train_prop)/exp_batch_size)
         self.exp_train_prop = exp_train_prop
-        self.ppo_net_opt_steps = ppo_net_opt_steps if ppo_net_opt_steps else 4 * rollout_length
+        self.exp_batch_size = exp_batch_size
+        self.ppo_net_opt_steps = ppo_net_opt_steps if ppo_net_opt_steps else (rollout_length / ppo_batch_size)
+        self.ppo_batch_size = ppo_batch_size
 
         self.gamma_i = gamma_i
         self.gamma_e = gamma_e
@@ -180,30 +183,25 @@ class BaseAgent:
             exp_train_samples = int(self.rollout_length * self.exp_train_prop)
             idxs = np.random.choice(trajectory.states.shape[0], exp_train_samples, replace=False)
             #another option: idxs = np.random.choice([False, True], trajectory.states.shape[0], p=[.75, .25])
-            dataset = tf.data.Dataset.from_tensor_slices((trajectory.states[idxs], trajectory.exp_targets[idxs]))
-            dataset.shuffle(100)
+            dataset = tf.data.Dataset.from_tensor_slices((np.take(trajectory.states, idxs, axis=0), np.take(trajectory.exp_targets, idxs, axis=0)))
+            dataset = dataset.shuffle(100).batch(self.exp_batch_size)
 
             #update exploration net
             optimizer = tf.train.AdamOptimizer(learning_rate=self.exp_lr)
-            step = 0
-            for (batch, (state, target)) in enumerate(dataset.take(64)):
-                if step > self.exp_net_opt_steps: break
+            for (batch, (state, target)) in enumerate(dataset.take(self.exp_net_opt_steps)):
                 with tf.GradientTape() as tape:
                     loss = tf.losses.mean_squared_error(target, self.exp_train_model(state))
                 grads = tape.gradient(loss, self.exp_train_model.variables)
                 optimizer.apply_gradients(zip(grads, self.exp_train_model.variables), global_step=tf.train.get_or_create_global_step())
-                step += 1
 
             #create new training set, and send old one to garbage collection
             dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.rews, trajectory.old_act_probs, trajectory.gaes))
-            dataset.shuffle(100)
+            dataset = dataset.shuffle(100).batch(self.ppo_batch_size)
 
             #update policy and value nets
             p_optimizer = tf.train.AdamOptimizer(learning_rate=self.ppo_lr)
             v_optimizer = tf.train.AdamOptimizer(learning_rate=self.ppo_lr)
-            step = 0
-            for (batch, (state, rew, old_act_prob, gae)) in enumerate(dataset.take(64)):
-                if step > self.ppo_net_opt_steps: break
+            for (batch, (state, rew, old_act_prob, gae)) in enumerate(dataset.take(self.ppo_net_opt_steps)):
                 with tf.GradientTape(persistent=True) as tape:
                     features = self.vis_model(state)
                     new_act_probs = self.policy_model(features)
@@ -220,4 +218,3 @@ class BaseAgent:
                 grads = tape.gradient(v_loss, [self.viz_model.variables, self.val_model.variables])
                 v_optimizer.apply_gradients(zip(grads, [self.vis_model.variables, self.val_model_e.variables, self.val_model_i.variables]), global_step=tf.train.get_or_create_global_step())
                 del tape
-                step += 1
