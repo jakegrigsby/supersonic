@@ -19,8 +19,11 @@ class EnvironmentTestCase(unittest.TestCase):
         self.agent.env.reset()
         obs, rew, done, info = self.agent.env.step(self.agent.env.action_space.sample())
         self.assertIsInstance(obs, np.ndarray)
-        self.assertTrue(obs.shape[0] == obs.shape[1])
-        self.assertTrue(obs.ndim == 3)
+        self.assertTrue(obs.ndim == 4)
+    
+    def test_obs_is_float32(self):
+        obs = self.agent.env.reset()
+        self.assertEqual(obs.dtype, np.float32)
     
     def test_env_reset(self):
         self.assertTrue(len(self.agent.env.reset()), 84)
@@ -97,13 +100,12 @@ class AgentTestCase(unittest.TestCase):
             os.mkdir(test_log_path)
 
     def test_trains(self):
-        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog')
+        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog', rollout_length=10)
         test_agent.train(1)
 
     def test_plays(self):
         test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog')
-        rew = test_agent.test(1)
-        self.assertTrue(rew > 0)
+        rew = test_agent.test(1, max_ep_steps=10)
 
     @classmethod
     def tearDownClass(cls):

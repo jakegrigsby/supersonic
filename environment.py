@@ -199,10 +199,7 @@ class FrameStackWrapper(gym.Wrapper):
     
     @property
     def stack(self):
-        """
-        We convert to float32 at the last moment, sacrificing accuracy during obs normalization
-        """
-        return self.frames.stack.astype(np.float32)
+        return np.expand_dims(self.frames.stack.astype(np.float32), axis=0)
 
         
 class RewardScaler(gym.RewardWrapper):

@@ -75,8 +75,8 @@ class Trajectory:
     def __init__(self, past_trajectory=None):
         # keeping track of attributes used in update_models
         self.states = []
-        self.i_rews = []
-        self.rews = []
+        self.rews_i = []
+        self.rews_e = []
         self.old_act_probs = []
         self.vals_e = []
         self.vals_i = []
@@ -93,27 +93,28 @@ class Trajectory:
             self.vals_i.append(past_trajectory.vals_i[i])
             self.exp_targets.append(past_trajectory.exp_targets[i])
 
-    def add(self, state, rew, i_rew, exp_target, act_probs, val_e, val_i):
+    def add(self, state, rew_e, rew_i, exp_target, act_probs, val_e, val_i):
         self.states.append(state)
-        self.rews.append(rew)
-        self.i_rews.append(i_rew)
+        self.rews_e.append(rew_e)
+        self.rews_i.append(rew_i)
         self.old_act_probs.append(act_probs)
         self.vals_e.append(val_e)
         self.vals_i.append(val_i)
         self.exp_targets.append(exp_target)
 
-    def end_trajectory(self, gamma, lam, i_rew_coeff, e_rew_coeff):
+    def end_trajectory(self, gamma_i, gamma_e, lam, i_rew_coeff, e_rew_coeff):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
         #calculate advantages
-        self.vals_next = self.vals[1:] + 0
-        deltas = self.rews[:-1] + gamma * self.vals_next - self.vals
-        e_adv = self.discount_cumsum(deltas, gamma * lam)
-        deltas = self.i_rews[:-1] + gamma * self.vals_next - self.vals
-        i_adv = self.discount_cumsum(deltas, gamma * lam)
+        self.vals_next_e = self.vals_e[1:] + [0]
+        self.vals_next_i = self.vals_i[1:] + [0]
+        deltas = self.rews_e[:-1] + gamma_e * self.vals_next_e[1:] - self.vals_e[:-1]
+        e_adv = self.discount_cumsum(deltas, gamma_e * lam)
+        deltas = self.rew_i[:-1] + gamma_i * self.vals_next_i[1:] - self.vals_i[:-1]
+        i_adv = self.discount_cumsum(deltas, gamma_i * lam)
         self.gaes = np.asarray(e_adv) + np.asarray(i_adv)
-        self.states = np.assarray(self.states, dtype=np.uint8)
-        i_rews = np.asarray(self.discount_cumsum(self.i_rews, gamma))
-        e_rews = np.asarray(self.dicount_cumsum(self.rews, gamma))
+        self.states = np.assarray(self.states, dtype=np.float32)
+        i_rews = np.asarray(self.discount_cumsum(self.rews_i, gamma_i))
+        e_rews = np.asarray(self.dicount_cumsum(self.rews_e, gamma_e))
         self.rews = (i_rew_coeff*i_rews) + (e_rew_coeff*e_rews)
         self.exp_targets = np.asarray(self.exp_targets)
         self.old_act_probs = np.asarray(self.old_act_probs)

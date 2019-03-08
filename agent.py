@@ -71,6 +71,7 @@ class BaseAgent:
                 action = self.choose_action(obs)
                 obs, rew, done, info = self.env.step(action)
                 cum_rew += rew
+                step += 1
         return cum_rew
 
     def rollout(self, steps, past_trajectory=None):
@@ -95,7 +96,7 @@ class BaseAgent:
             self.episode_stats(action, e_rew, i_rew, done, info)
             step += 1
         self.most_recent_step = (obs, e_rew, done, info)
-        trajectory.end_trajectory(self.gamma, self.lam, self.i_rew_coeff, self.e_rew_coeff)
+        trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, self.i_rew_coeff, self.e_rew_coeff)
         return trajectory
     
     def episode_stats(self, action, e_rew, i_rew, done, info):
@@ -104,7 +105,7 @@ class BaseAgent:
         furthest_point = (0,0)
         death_coords = []
         current_lives = 3
-        episode_num += 1
+        episode_num = 0
         training_steps = 0
 
         def update_ep_stats(action, e_rew, i_rew, info, done):
@@ -144,7 +145,6 @@ class BaseAgent:
         Choose an action based on the current observation. Saves computation by not running the value net,
         which makes it a good choice for testing the agent.
         """
-        obs = np.expand_dims(obs, -1)
         features = self.vis_model(obs)
         actions = self.policy_model(features)
         return np.argmax(actions)
@@ -154,7 +154,6 @@ class BaseAgent:
         Run the entire network and return the action probability distribution (not just the chosen action) as well as the values
         from the value net. Used during training -  when more information is needed.
         """
-        obs = np.expand_dims(obs, -1)
         features = self.vis_model(obs)
         action_probs = self.policy_model(features)
         val_e = self.val_model_e(features)
