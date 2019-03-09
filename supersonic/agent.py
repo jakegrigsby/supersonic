@@ -55,7 +55,7 @@ class BaseAgent:
 
         self.rollout_length = rollout_length
 
-        self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs'
+        self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
         self.logger = logger.Logger(self.log_dir)
 
     def train(self, rollouts, device='/cpu:0'):
@@ -71,7 +71,7 @@ class BaseAgent:
             step = 0
             obs, rew, done, info = self.env.reset(), 0, False, {}
             while step < max_ep_steps and not done:
-                action = self.choose_action(obs)
+                action = self.choose_action(obs, training=False)
                 obs, rew, done, info = self.env.step(action)
                 if render: self.env.render()
                 cum_rew += rew
@@ -151,7 +151,7 @@ class BaseAgent:
         which makes it a good choice for testing the agent.
         """
         features = self.vis_model(obs)
-        action_probs = np.squeeze(self.policy_model(features))
+        action_probs = np.squeeze(self.policy_model(features)) + 1e-5
         if training:
             action = np.random.choice(np.arange(self.nb_actions), p=action_probs)
         else:
@@ -164,11 +164,13 @@ class BaseAgent:
         from the value net. Used during training -  when more information is needed.
         """
         features = self.vis_model(obs)
-        action_probs = np.squeeze(np.transpose(self.policy_model(features)), axis=-1)
+        action_probs = np.squeeze(np.transpose(self.policy_model(features)), axis=-1) + 1e-5
+        if True in np.isnan(action_probs):
+            import pdb; pdb.set_trace()
         action_idx = np.random.choice(np.arange(self.nb_actions), p=action_probs)
         action_prob = action_probs[action_idx]
-        val_e = self.val_model_e(features)
-        val_i = self.val_model_i(features)
+        val_e = tf.squeeze(self.val_model_e(features))
+        val_i = tf.squeeze(self.val_model_i(features))
         return action_prob, action_idx, val_e, val_i
 
     def calc_intrinsic_reward(self, state):

@@ -41,7 +41,7 @@ def build_sonic(lvl):
     env = WarpFrame(env)
     env = AllowBacktracking(env)
     env = ClipReward(env, -5, 5)
-    env = DynamicNormalize(env)
+    #env = DynamicNormalize(env)
     env = SonicDiscretizer(env)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)

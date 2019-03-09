@@ -3,7 +3,7 @@ import os
 import json
 
 import numpy as np
-import scipy
+import scipy.signal
 import cv2
 
 
@@ -87,14 +87,13 @@ class Trajectory:
 
         # if given a past trajectory to resume from, the first elements in this trajectory will be the last from the old one
         if past_trajectory != None:
-            i = len(past_trajectory.states) - 1
-            self.states.append(past_trajectory.states[i])
-            self.i_rews.append(past_trajectory.i_rews[i])
-            self.rews.append(past_trajectory.rews[i])
-            self.old_act_probs.append(past_trajectory.old_act_probs[i])
-            self.vals_e.append(past_trajectory.vals_e[i])
-            self.vals_i.append(past_trajectory.vals_i[i])
-            self.exp_targets.append(past_trajectory.exp_targets[i])
+            self.states.append(past_trajectory.states[-1])
+            self.rews_i.append(past_trajectory.rews_i[-1])
+            self.rews_e.append(past_trajectory.rews_e[-1])
+            self.old_act_probs.append(past_trajectory.old_act_probs[-1])
+            self.vals_e.append(past_trajectory.vals_e[-1])
+            self.vals_i.append(past_trajectory.vals_i[-1])
+            self.exp_targets.append(past_trajectory.exp_targets[-1])
 
     def add(self, state, rew_e, rew_i, exp_target, act_prob_tuple, val_e, val_i):
         self.states.append(np.squeeze(state, axis=0))
@@ -111,8 +110,8 @@ class Trajectory:
         self.rews_i = np.asarray(self.rews_i)
         self.rews_e = np.asarray(self.rews_e)
         self.old_act_probs = np.expand_dims(np.asarray(self.old_act_probs), axis=1)
-        self.vals_e = np.squeeze(np.squeeze(np.asarray(self.vals_e), axis=-1))
-        self.vals_i = np.squeeze(np.squeeze(np.asarray(self.vals_i), axis=-1))
+        self.vals_e = np.asarray(self.vals_e)
+        self.vals_i = np.asarray(self.vals_i)
         self.exp_targets = np.squeeze(np.asarray(self.exp_targets), axis=1)
         self.actions = np.expand_dims(np.asarray(self.actions), axis=1)
 
