@@ -81,6 +81,7 @@ class Trajectory:
         self.vals_e = []
         self.vals_i = []
         self.exp_targets = []
+        self.actions = []
 
         # if given a past trajectory to resume from, the first elements in this trajectory will be the last from the old one
         if past_trajectory != None:
@@ -93,43 +94,41 @@ class Trajectory:
             self.vals_i.append(past_trajectory.vals_i[i])
             self.exp_targets.append(past_trajectory.exp_targets[i])
 
-    def add(self, state, rew_e, rew_i, exp_target, act_probs, val_e, val_i):
+    def add(self, state, rew_e, rew_i, exp_target, act_prob_tuple, val_e, val_i):
         self.states.append(np.squeeze(state, axis=0))
         self.rews_e.append(rew_e)
         self.rews_i.append(rew_i)
-        self.old_act_probs.append(act_probs)
+        self.old_act_probs.append(act_prob_tuple[0])
+        self.actions.append(act_prob_tuple[1])
         self.vals_e.append(val_e)
         self.vals_i.append(val_i)
         self.exp_targets.append(exp_target)
     
     def _lists_to_ndarrays(self):
         self.states = np.asarray(self.states)
-        self.rew_i = np.asarray(self.rews_i)
+        self.rews_i = np.asarray(self.rews_i)
         self.rews_e = np.asarray(self.rews_e)
-        self.old_act_probs = np.asarray(self.old_act_probs)
-        self.vals_e = np.asarray(self.vals_e)
-        self.vals_i = np.asarray(self.vals_i)
-        self.exp_targets = np.asarray(self.exp_targets)
-        self.vals_next_e = np.asarray(self.vals_next_e)
-        self.vals_next_i = np.asarray(self.vals_next_i)
+        self.old_act_probs = np.expand_dims(np.asarray(self.old_act_probs), axis=1)
+        self.vals_e = np.squeeze(np.squeeze(np.asarray(self.vals_e), axis=-1))
+        self.vals_i = np.squeeze(np.squeeze(np.asarray(self.vals_i), axis=-1))
+        self.exp_targets = np.squeeze(np.asarray(self.exp_targets), axis=1)
+        self.actions = np.expand_dims(np.asarray(self.actions), axis=1)
 
-    def end_trajectory(self, gamma_i, gamma_e, lam, i_rew_coeff, e_rew_coeff):
+    def end_trajectory(self, gamma_i, gamma_e, lam, i_rew_coeff, e_rew_coeff, last_val_i, last_val_e):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
         #calculate advantages
-        self.vals_next_e = self.vals_e[1:] + [0]
-        self.vals_next_i = self.vals_i[1:] + [0]
+        self.vals_e.append(last_val_e)
+        self.vals_i.append(last_val_i)
         self._lists_to_ndarrays()
-        deltas = self.rews_e[:-1] + gamma_e * self.vals_next_e[1:] - self.vals_e[:-1]
+        deltas = self.rews_e + gamma_e * (self.vals_e[1:] - self.vals_e[:-1])
         e_adv = self.discount_cumsum(deltas, gamma_e * lam)
-        deltas = self.rew_i[:-1] + gamma_i * self.vals_next_i[1:] - self.vals_i[:-1]
+        deltas = self.rews_i + gamma_i * (self.vals_i[1:] - self.vals_i[:-1])
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
-        self.gaes = np.asarray(e_adv) + np.asarray(i_adv)
+        self.gaes = np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32)
         self.states = np.asarray(self.states, dtype=np.float32)
         i_rews = np.asarray(self.discount_cumsum(self.rews_i, gamma_i))
         e_rews = np.asarray(self.discount_cumsum(self.rews_e, gamma_e))
-        self.rews = (i_rew_coeff*i_rews) + (e_rew_coeff*e_rews)
-        self.exp_targets = np.asarray(self.exp_targets)
-        self.old_act_probs = np.asarray(self.old_act_probs)
+        self.rews = np.expand_dims((i_rew_coeff*i_rews) + (e_rew_coeff*e_rews), axis=-1).astype(np.float32)
 
     def discount_cumsum(self, x, discount):
         return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
