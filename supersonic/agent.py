@@ -55,7 +55,7 @@ class BaseAgent:
 
         self.rollout_length = rollout_length
 
-        self.log_dir = os.path.join('logs',log_dir)
+        self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs'
         self.logger = logger.Logger(self.log_dir)
 
     def train(self, rollouts, device='/cpu:0'):
@@ -65,7 +65,7 @@ class BaseAgent:
             self.update_models(trajectory, device)
             past_trajectory = deepcopy(trajectory)
 
-    def test(self, episodes, max_ep_steps=4500):
+    def test(self, episodes, max_ep_steps=4500, render=False):
         cum_rew = 0
         for ep in range(episodes):
             step = 0
@@ -73,6 +73,7 @@ class BaseAgent:
             while step < max_ep_steps and not done:
                 action = self.choose_action(obs)
                 obs, rew, done, info = self.env.step(action)
+                if render: self.env.render()
                 cum_rew += rew
                 step += 1
         return cum_rew
