@@ -107,6 +107,7 @@ class AgentTestCase(unittest.TestCase):
         test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog')
         test_agent.save_weights('model_zoo/testweights')
         test_agent.load_weights('model_zoo/testweights')
+        shutil.rmtree('model_zoo/testweights')
 
     @classmethod
     def tearDownClass(cls):
