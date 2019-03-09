@@ -1,8 +1,10 @@
+
 import numpy as np
 import gym
 import retro
 import cv2
-import utils
+
+from supersonic import utils
 
 #don't use the gpu for frame scaling
 cv2.ocl.setUseOpenCL(False)

@@ -5,7 +5,7 @@ import retro
 import skvideo.io
 import numpy as np
 
-import utils
+from supersonic import utils
 
 class Camera(gym.Wrapper):
     """

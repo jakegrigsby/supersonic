@@ -1,5 +1,7 @@
+
 import tensorflow as tf
-import utils
+
+from supersonic import utils
 
 """
 As part of the plan to minimize MPI complexity, most of the meta-learning/param-search algs will involve passing strings

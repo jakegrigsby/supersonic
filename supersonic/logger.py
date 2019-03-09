@@ -1,6 +1,6 @@
 import csv, glob, json, os, time, webcolors
-
 from datetime import datetime
+
 import numpy as np
 import pandas as pd
 from visdom import Visdom

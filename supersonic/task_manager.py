@@ -3,7 +3,7 @@ from collections import namedtuple
 import tensorflow as tf
 from mpi4py import MPI 
 
-from agent import Agent
+from supersonic.agent import Agent
 
 
 Task = namedtuple('Task','env_id hyp_dict log_dir')

@@ -4,14 +4,10 @@ import shutil
 
 import numpy as np
 
-import environment
-import utils
-import random_agent
-import camera
-import agent
+from supersonic import environment, utils, random_agent, camera, agent
 
 class EnvironmentTestCase(unittest.TestCase):
-
+    
     def setUp(self):
         self.agent = random_agent.SonicRandomAgent('GreenHillZone.Act1')
 
@@ -97,7 +93,7 @@ class AgentTestCase(unittest.TestCase):
     def setUpClass(cls):
         test_log_path = os.path.join('logs','tests')
         if not os.path.exists(test_log_path):
-            os.mkdir(test_log_path)
+            os.makedirs(test_log_path)
 
     def test_trains(self):
         test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog', rollout_length=32, exp_train_prop=1.)
@@ -106,6 +102,11 @@ class AgentTestCase(unittest.TestCase):
     def test_plays(self):
         test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog')
         rew = test_agent.test(1, max_ep_steps=10)
+    
+    def test_save_load_weights(self):
+        test_agent = agent.BaseAgent('GreenHillZone.Act1', log_dir='tests/testlog')
+        test_agent.save_weights('model_zoo/testweights')
+        test_agent.load_weights('model_zoo/testweights')
 
     @classmethod
     def tearDownClass(cls):

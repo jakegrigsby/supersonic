@@ -1,8 +1,7 @@
 from mpi4py import MPI
 import numpy as np
 
-import utils
-import task_manager
+from supersonic import utils, task_manager
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()

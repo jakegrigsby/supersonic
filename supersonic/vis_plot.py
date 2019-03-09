@@ -1,4 +1,5 @@
 import argparse, json
+
 from visdom import Visdom
 
 VISDOM_PORT = 8097

@@ -1,9 +1,11 @@
 import csv
 import os
+import json
+
 import numpy as np
 import scipy
-import json
 import cv2
+
 
 def load_sonic_lvl_set(train=True):
     lvls = {}

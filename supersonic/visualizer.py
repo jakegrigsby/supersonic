@@ -1,10 +1,11 @@
 import csv
 import time
 from datetime import datetime
+
 from visdom import Visdom
 import pandas as pd
 
-from episode_log import EpisodeLog
+from supersonic.episode_log import EpisodeLog
 
 
 class Visualizer:

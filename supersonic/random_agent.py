@@ -1,10 +1,9 @@
 import random
 import os
+
 import retro
-import environment
-import utils
-from logger import EpisodeLog, Logger
-import camera
+
+from supersonic import environment, utils, logger, camera
 
 
 class SonicRandomAgent:
@@ -28,6 +27,7 @@ class SonicRandomAgent:
                 if render:
                     self.env.render()
                 _, rew, done, info = self.env.step(self.choose_action())
+                print(rew)
                 step += 1
 
     def choose_action(self):

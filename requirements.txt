@@ -1,7 +1,8 @@
 gym
+numpy==1.16.2
 gym-retro
-numpy
 opencv-python
 sk-video
 visdom
 webcolors
+tensorflow==1.13.1

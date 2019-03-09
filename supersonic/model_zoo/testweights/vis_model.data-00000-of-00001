@@ -1,0 +1,14 @@
+ê(PÈ{"class_name": "Conv2D", "config": {"activation": "relu", "activity_regularizer": null, "batch_input_shape": [null, 84, 84, 4], "bias_constraint": null, "bias_initializer": {"class_name": "Zeros", "config": {"dtype": "float32"}}, "bias_regularizer": null, "data_format": "channels_last", "dilation_rate": [1, 1], "dtype": null, "filters": 32, "kernel_constraint": null, "kernel_initializer": {"class_name": "GlorotUniform", "config": {"dtype": "float32", "seed": null}}, "kernel_regularizer": null, "kernel_size": [8, 8], "name": "conv2d_9", "padding": "valid", "strides": [4, 4], "trainable": true, "use_bias": true}}Ãñ‡¬@{"class_name": "Conv2D", "config": {"activation": "relu", "activity_regularizer": null, "bias_constraint": null, "bias_initializer": {"class_name": "Zeros", "config": {"dtype": "float32"}}, "bias_regularizer": null, "data_format": "channels_last", "dilation_rate": [1, 1], "dtype": null, "filters": 64, "kernel_constraint": null, "kernel_initializer": {"class_name": "GlorotUniform", "config": {"dtype": "float32", "seed": null}}, "kernel_regularizer": null, "kernel_size": [4, 4], "name": "conv2d_10", "padding": "valid", "strides": [2, 2], "trainable": true, "use_bias": true}}Ãñ‡¬@{"class_name": "Conv2D", "config": {"activation": "relu", "activity_regularizer": null, "bias_constraint": null, "bias_initializer": {"class_name": "Zeros", "config": {"dtype": "float32"}}, "bias_regularizer": null, "data_format": "channels_last", "dilation_rate": [1, 1], "dtype": null, "filters": 64, "kernel_constraint": null, "kernel_initializer": {"class_name": "GlorotUniform", "config": {"dtype": "float32", "seed": null}}, "kernel_regularizer": null, "kernel_size": [3, 3], "name": "conv2d_11", "padding": "valid", "strides": [1, 1], "trainable": true, "use_bias": true}}|¥Œ‰i{"class_name": "Flatten", "config": {"data_format": "channels_last", "dtype": null, "name": "flatten_3", "trainable": true}}ªÑ-½
+.
+	conv1
+	conv2
+	conv3
+flatten
+<:
+OBJECT_CONFIG_JSON$conv1/.ATTRIBUTES/OBJECT_CONFIG_JSON
+<:
+OBJECT_CONFIG_JSON$conv2/.ATTRIBUTES/OBJECT_CONFIG_JSON
+<:
+OBJECT_CONFIG_JSON$conv3/.ATTRIBUTES/OBJECT_CONFIG_JSON
+><
+OBJECT_CONFIG_JSON&flatten/.ATTRIBUTES/OBJECT_CONFIG_JSON

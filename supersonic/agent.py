@@ -1,11 +1,10 @@
-import numpy as np
-import tensorflow as tf
 from copy import deepcopy
 import os
-import environment
-import utils
-import models
-import logger
+
+import numpy as np
+import tensorflow as tf
+
+from supersonic import environment, utils, models, logger
 
 def ppo_agent(env_id, hyp_dict, log_dir):
     """
@@ -234,3 +233,22 @@ class BaseAgent:
                 grads = tape.gradient(v_loss, self.val_model_i.variables)
                 v_optimizer.apply_gradients(zip(grads, self.val_model_i.variables))
                 del tape
+    
+    def save_weights(self, path):
+        if not os.path.exists(path):
+            os.makedirs(path) 
+
+        self.vis_model.save_weights(os.path.join(path, 'vis_model'))
+        self.policy_model.save_weights(os.path.join(path, 'pol_model'))
+        self.val_model_e.save_weights(os.path.join(path, 'val_model_e'))
+        self.val_model_i.save_weights(os.path.join(path, 'val_model_i'))
+        self.exp_train_model.save_weights(os.path.join(path, 'exp_train_model'))
+        self.exp_target_model.save_weights(os.path.join(path, 'exp_target_model'))
+    
+    def load_weights(self, path):
+        self.vis_model.load_weights(os.path.join(path, 'vis_model'))
+        self.policy_model.load_weights(os.path.join(path, 'pol_model'))
+        self.val_model_e.load_weights(os.path.join(path, 'val_model_e'))
+        self.val_model_i.load_weights(os.path.join(path, 'val_model_i'))
+        self.exp_train_model.load_weights(os.path.join(path, 'exp_train_model'))
+        self.exp_target_model.load_weights(os.path.join(path, 'exp_target_model'))
