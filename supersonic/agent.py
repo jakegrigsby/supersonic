@@ -21,7 +21,7 @@ class BaseAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=None, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.25, lam=.99, exp_batch_size=64,
+                    rollout_length=128, ppo_net_opt_steps=10, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=64,
                     ppo_batch_size=64, ppo_clip_value=0.2):
         
         tf.enable_eager_execution()
@@ -113,7 +113,18 @@ class BaseAgent:
         episode_num = 0
         training_steps = 0
 
-        def update_ep_stats(action, e_rew, i_rew, info, done):
+        def reset_stats():
+            nonlocal episode_num
+            action_count = [0 for i in range(self.nb_actions)]
+            cum_rew_e, cum_rew_i = 0, 0
+            furthest_point = (0,0)
+            death_coords = []
+            current_lives = 3
+            episode_num += 1
+            training_steps = 0
+
+        def update_ep_stats(action, e_rew, i_rew, done, info):
+            nonlocal training_steps, cum_rew_e, cum_rew_i, action_count, death_coords, current_lives, furthest_point
             action_count[action] += 1
             cum_rew_e += e_rew
             cum_rew_i += i_rew
@@ -135,16 +146,8 @@ class BaseAgent:
                 self.logger.log_episode(episode_log)
                 reset_stats()
         
-        def reset_stats():
-            action_count = [0 for i in range(self.nb_actions)]
-            cum_rew_e, cum_rew_i = 0, 0
-            furthest_point = (0,0)
-            death_coords = []
-            current_lives = 3
-            episode_num += 1
-            training_steps = 0
-
-
+        return update_ep_stats(action, e_rew, i_rew, done, info)
+       
     def choose_action(self, obs, training=True):
         """
         Choose an action based on the current observation. Saves computation by not running the value net,
