@@ -41,7 +41,7 @@ def build_sonic(lvl):
     env = WarpFrame(env)
     env = AllowBacktracking(env)
     env = ClipReward(env, -5, 5)
-    #env = DynamicNormalize(env)
+    env = BasicNormalize(env)
     env = SonicDiscretizer(env)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
@@ -132,6 +132,15 @@ class MaxAndSkipEnv(gym.Wrapper):
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
+
+class BasicNormalize(gym.ObservationWrapper):
+    
+    def observation(self, obs):
+        obs = obs.astype(np.float32)
+        obs -= np.mean(obs)
+        obs /= np.std(obs)
+        return obs
+
 class DynamicNormalize(gym.Wrapper):
     """
     Normalize observations and rewards using a running mean and std dev.
@@ -172,7 +181,7 @@ class DynamicNormalize(gym.Wrapper):
 
     def reset_normalization(self):
         self.count = 0
-        self.o_mean, self.o_m2, self.o_variance = [np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float64))] * 3
+        self.o_mean, self.o_m2, self.o_variance = [np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))] * 3
         self.r_mean, self.r_m2, self.r_var = .0, .0, .0
 
     def reset(self, **kwargs):
@@ -187,7 +196,7 @@ class FrameStackWrapper(gym.Wrapper):
     def __init__(self, env, k=4):
         super().__init__(env)
         self.k = k
-        self.frames = utils.FrameStack(capacity=k, default_frame=self.env.reset())
+        self.frames = utils.FrameStack(capacity=k, default_frame=self.env.reset(), dtype=np.float32)
 
     def reset(self):
         self.env.reset()
@@ -201,7 +210,7 @@ class FrameStackWrapper(gym.Wrapper):
     
     @property
     def stack(self):
-        return np.expand_dims(self.frames.stack.astype(np.float32), axis=0)
+        return np.expand_dims(self.frames.stack, axis=0)
 
         
 class RewardScaler(gym.RewardWrapper):

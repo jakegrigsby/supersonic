@@ -86,7 +86,7 @@ class BaseAgent:
         if not self.most_recent_step[2]:
             obs, e_rew, done, info = self.most_recent_step
         else:
-            obs, e_rew, done, info = self.env.reset(), 0, False, {}
+            obs, e_rew, done, info = np.expand_dims(self.env.reset(),0), 0, False, {}
         step = 0
         trajectory = utils.Trajectory(past_trajectory)
         last_val_e, last_val_i = 0, 0
@@ -151,7 +151,7 @@ class BaseAgent:
         which makes it a good choice for testing the agent.
         """
         features = self.vis_model(obs)
-        action_probs = np.squeeze(self.policy_model(features)) + 1e-5
+        action_probs = np.squeeze(self.policy_model(features))
         if training:
             action = np.random.choice(np.arange(self.nb_actions), p=action_probs)
         else:
@@ -164,9 +164,7 @@ class BaseAgent:
         from the value net. Used during training -  when more information is needed.
         """
         features = self.vis_model(obs)
-        action_probs = np.squeeze(np.transpose(self.policy_model(features)), axis=-1) + 1e-5
-        if True in np.isnan(action_probs):
-            import pdb; pdb.set_trace()
+        action_probs = np.squeeze(np.transpose(self.policy_model(features)), axis=-1)
         action_idx = np.random.choice(np.arange(self.nb_actions), p=action_probs)
         action_prob = action_probs[action_idx]
         val_e = tf.squeeze(self.val_model_e(features))

@@ -30,9 +30,9 @@ def all_sonic_lvls():
 
 class FrameStack:
 
-    def __init__(self, capacity, default_frame):
+    def __init__(self, capacity, default_frame, dtype=np.uint8):
         self.capacity = capacity
-        self.default_frame = default_frame
+        self.default_frame = default_frame.astype(dtype)
         self.reset()
 
     def append(self, frame):
@@ -87,7 +87,6 @@ class Trajectory:
 
         # if given a past trajectory to resume from, the first elements in this trajectory will be the last from the old one
         if past_trajectory != None:
-            self.states.append(past_trajectory.states[-1])
             self.rews_i.append(past_trajectory.rews_i[-1])
             self.rews_e.append(past_trajectory.rews_e[-1])
             self.old_act_probs.append(past_trajectory.old_act_probs[-1])
@@ -96,24 +95,24 @@ class Trajectory:
             self.exp_targets.append(past_trajectory.exp_targets[-1])
 
     def add(self, state, rew_e, rew_i, exp_target, act_prob_tuple, val_e, val_i):
-        self.states.append(np.squeeze(state, axis=0))
+        self.states.append(np.squeeze(state))
         self.rews_e.append(rew_e)
         self.rews_i.append(rew_i)
-        self.old_act_probs.append(act_prob_tuple[0])
+        self.old_act_probs.append(np.expand_dims(act_prob_tuple[0], axis=0))
         self.actions.append(act_prob_tuple[1])
         self.vals_e.append(val_e)
         self.vals_i.append(val_i)
-        self.exp_targets.append(exp_target)
+        self.exp_targets.append(np.squeeze(exp_target))
     
     def _lists_to_ndarrays(self):
         self.states = np.asarray(self.states)
         self.rews_i = np.asarray(self.rews_i)
         self.rews_e = np.asarray(self.rews_e)
-        self.old_act_probs = np.expand_dims(np.asarray(self.old_act_probs), axis=1)
+        self.old_act_probs = np.asarray(self.old_act_probs)
         self.vals_e = np.asarray(self.vals_e)
         self.vals_i = np.asarray(self.vals_i)
-        self.exp_targets = np.squeeze(np.asarray(self.exp_targets), axis=1)
-        self.actions = np.expand_dims(np.asarray(self.actions), axis=1)
+        self.exp_targets = np.asarray(self.exp_targets)
+        self.actions = np.asarray(self.actions)
 
     def end_trajectory(self, gamma_i, gamma_e, lam, i_rew_coeff, e_rew_coeff, last_val_i, last_val_e):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
