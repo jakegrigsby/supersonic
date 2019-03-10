@@ -88,7 +88,7 @@ class BaseAgent:
         else:
             obs, e_rew, done, info = np.expand_dims(self.env.reset(),0), 0, False, {}
         step = 0
-        trajectory = utils.Trajectory(past_trajectory)
+        trajectory = utils.Trajectory(self.rollout_length, past_trajectory)
         last_val_e, last_val_i = 0, 0
         while step < steps:
             if done: obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes

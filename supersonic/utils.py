@@ -74,7 +74,7 @@ class Trajectory:
     is called and all the information needed to update the RND networks is
     calculated and made available.
     """
-    def __init__(self, past_trajectory=None):
+    def __init__(self, rollout_length, past_trajectory=None):
         # keeping track of attributes used in update_models
         self.states = []
         self.rews_i = []
@@ -84,6 +84,8 @@ class Trajectory:
         self.vals_i = []
         self.exp_targets = []
         self.actions = []
+
+        self.rollout_length = rollout_length
 
         # if given a past trajectory to resume from, the first elements in this trajectory will be the last from the old one
         if past_trajectory != None:
@@ -105,14 +107,14 @@ class Trajectory:
         self.exp_targets.append(np.squeeze(exp_target))
     
     def _lists_to_ndarrays(self):
-        self.states = np.asarray(self.states)
-        self.rews_i = np.asarray(self.rews_i)
-        self.rews_e = np.asarray(self.rews_e)
-        self.old_act_probs = np.asarray(self.old_act_probs)
-        self.vals_e = np.asarray(self.vals_e)
-        self.vals_i = np.asarray(self.vals_i)
-        self.exp_targets = np.asarray(self.exp_targets)
-        self.actions = np.asarray(self.actions)
+        self.states = np.asarray(self.states)[:self.rollout_length]
+        self.rews_i = np.asarray(self.rews_i)[:self.rollout_length]
+        self.rews_e = np.asarray(self.rews_e)[:self.rollout_length]
+        self.old_act_probs = np.asarray(self.old_act_probs)[:self.rollout_length]
+        self.vals_e = np.asarray(self.vals_e)[:self.rollout_length+1]
+        self.vals_i = np.asarray(self.vals_i)[:self.rollout_length+1]
+        self.exp_targets = np.asarray(self.exp_targets)[:self.rollout_length]
+        self.actions = np.asarray(self.actions)[:self.rollout_length]
 
     def end_trajectory(self, gamma_i, gamma_e, lam, i_rew_coeff, e_rew_coeff, last_val_i, last_val_e):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
@@ -125,7 +127,6 @@ class Trajectory:
         deltas = self.rews_i + gamma_i * (self.vals_i[1:] - self.vals_i[:-1])
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
         self.gaes = np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32)
-        self.states = np.asarray(self.states, dtype=np.float32)
         i_rews = np.asarray(self.discount_cumsum(self.rews_i, gamma_i))
         e_rews = np.asarray(self.discount_cumsum(self.rews_e, gamma_e))
         self.rews = np.expand_dims((i_rew_coeff*i_rews) + (e_rew_coeff*e_rews), axis=-1).astype(np.float32)
