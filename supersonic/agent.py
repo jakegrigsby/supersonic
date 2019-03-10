@@ -65,13 +65,13 @@ class BaseAgent:
             self.update_models(trajectory, device)
             past_trajectory = deepcopy(trajectory)
 
-    def test(self, episodes, max_ep_steps=4500, render=False):
+    def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
         cum_rew = 0
         for ep in range(episodes):
             step = 0
             obs, rew, done, info = self.env.reset(), 0, False, {}
             while step < max_ep_steps and not done:
-                action = self.choose_action(obs, training=False)
+                action = self.choose_action(obs, training=stochastic)
                 obs, rew, done, info = self.env.step(action)
                 if render: self.env.render()
                 cum_rew += rew
