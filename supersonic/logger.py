@@ -56,8 +56,8 @@ class Logger:
     #The line plots to create for each episode
     EPISODE_LINE_PLOTS = [
         ('episode_num', 'max_x', 'blue'),
-        ('episode_num', 'reward', 'green'),
-        ('episode_num', 'score', 'purple'),
+        ('episode_num', 'external_reward', 'green'),
+        ('episode_num', 'internal_reward', 'purple'),
     ]
 
 
@@ -155,7 +155,7 @@ class EpisodeLog:
     """
     Contains information about one training run within a specific episode.
     """
-    required_params = ['episode_num', 'death_coords', 'training_steps', 'max_x', 'score', 'external_reward', 'internal_reward']
+    required_params = ['episode_num', 'death_coords', 'training_steps', 'max_x', 'score', 'external_reward', 'internal_reward', 'action_count']
     def __init__(self, params):
         for required_param in self.required_params: 
             if required_param not in params: 
@@ -173,6 +173,7 @@ class EpisodeLog:
         # The reward from this episode
         self.external_reward = params['external_reward']
         self.internal_reward = params['internal_reward']
+        self.action_count = params['action_count']
         # @TODO: implement action distribution, video playback buffer
 
     # Function __dir()___ which list all  

@@ -143,7 +143,8 @@ class BaseAgent:
                             'max_x':self._log_furthest_point[0],
                             'score':info['score'],
                             'external_reward':self._log_cum_rew_e,
-                            'internal_reward':self._log_cum_rew_i,}
+                            'internal_reward':self._log_cum_rew_i,
+                            'action_count':self._log_action_count,}
             episode_log = logger.EpisodeLog(episode_dict)
             self.logger.log_episode(episode_log)
             self._reset_stats()
