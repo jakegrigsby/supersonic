@@ -19,10 +19,10 @@ class BaseAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.001, ppo_lr=.0005, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=10, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=64,
-                    ppo_batch_size=64, ppo_clip_value=0.2):
+                    rollout_length=128, ppo_net_opt_steps=None, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=64,
+                    ppo_batch_size=64, ppo_clip_value=0.2, update_mean_gae_until=10000):
         
         tf.enable_eager_execution()
 
@@ -55,12 +55,18 @@ class BaseAgent:
 
         self.rollout_length = rollout_length
 
+        self.update_mean_gae_until = update_mean_gae_until
+        self._gae_count = 0
+        self._gae_running_mean = np.zeros((rollout_length,1), dtype=np.float32)
+        self._gae_m2 = np.zeros_like(self._gae_running_mean)
+
         self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
         self.logger = logger.Logger(self.log_dir)
 
     def train(self, rollouts, device='/cpu:0'):
         past_trajectory = None
-        for _ in range(rollouts):
+        for rollout in range(rollouts):
+            print("Rollout #{}".format(rollout))
             trajectory = self.rollout(self.rollout_length, past_trajectory)
             self.update_models(trajectory, device)
             past_trajectory = deepcopy(trajectory)
@@ -182,7 +188,21 @@ class BaseAgent:
         pred = self.exp_train_model(state)
         rew = np.square(np.subtract(target, pred)).mean()
         return rew, target #save targets to trajectory to avoid another call to the exp_target_model network during update_models()
-
+    
+    def _normalize_gaes(self, gaes):
+        if self._gae_count < self.update_mean_gae_until:
+            self._update_gae_normalization(gaes)
+        var = self._gae_m2 / ((self._gae_count-1) + 1e-3)
+        std = np.sqrt(var)
+        gaes = (gaes - self._gae_running_mean) / (std + 1e-3)
+        return gaes
+    
+    def _update_gae_normalization(self, gaes):
+        self._gae_count += 1
+        delta = gaes - self._gae_running_mean
+        self._gae_running_mean += delta / self._gae_count
+        delta2 = gaes - self._gae_running_mean
+        self._gae_m2 += delta * delta2
 
     def update_models(self, trajectory, device='/cpu:0'):
         """
@@ -205,6 +225,7 @@ class BaseAgent:
                 optimizer.apply_gradients(zip(grads, self.exp_train_model.variables), global_step=tf.train.get_or_create_global_step())
 
             #create new training set, and send old one to garbage collection
+            trajectory.gaes = self._normalize_gaes(trajectory.gaes)
             dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.rews, trajectory.old_act_probs, trajectory.actions, trajectory.gaes))
             dataset = dataset.shuffle(100).batch(self.ppo_batch_size)
 
