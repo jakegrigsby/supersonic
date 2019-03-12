@@ -21,8 +21,8 @@ class BaseAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.0005, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=None, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=64,
-                    ppo_batch_size=64, ppo_clip_value=0.2, update_mean_gae_until=10000):
+                    rollout_length=128, ppo_net_opt_steps=8, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=64,
+                    ppo_batch_size=64, ppo_clip_value=0.2, update_mean_gae_until=10000, checkpoint_interval=5000):
         
         tf.enable_eager_execution()
 
@@ -32,6 +32,7 @@ class BaseAgent:
 
         self.exp_lr = exp_lr
         self.ppo_lr = ppo_lr
+        self.checkpoint_interval = checkpoint_interval
 
         self.vis_model = models.get_model(vis_model)()
         self.policy_model = models.get_model(policy_model)(self.nb_actions)
@@ -69,9 +70,11 @@ class BaseAgent:
         past_trajectory = None
         for rollout in range(rollouts):
             print("Rollout #{}".format(rollout))
-            trajectory = self.rollout(self.rollout_length, past_trajectory, render=render)
-            self.update_models(trajectory, device)
+            trajectory = self._rollout(self.rollout_length, past_trajectory, render=render)
+            self._update_models(trajectory, device)
             past_trajectory = deepcopy(trajectory)
+            if rollout % self.checkpoint_interval == 0:
+                self._checkpoint(rollout)
 
     def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
         cum_rew = 0
@@ -79,14 +82,14 @@ class BaseAgent:
             step = 0
             obs, rew, done, info = self.env.reset(), 0, False, {}
             while step < max_ep_steps and not done:
-                action = self.choose_action(obs, training=stochastic)
+                action = self._choose_action(obs, training=stochastic)
                 obs, rew, done, info = self.env.step(action)
                 if render: self.env.render()
                 cum_rew += rew
                 step += 1
         return cum_rew
 
-    def rollout(self, steps, past_trajectory=None, render=False):
+    def _rollout(self, steps, past_trajectory=None, render=False):
         """
         Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
         """
@@ -100,14 +103,14 @@ class BaseAgent:
         last_val_e, last_val_i = 0, 0
         while step < steps:
             if done: obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
-            action_prob, action, val_e, val_i = self.choose_action_get_value(obs)
+            action_prob, action, val_e, val_i = self._choose_action_get_value(obs)
             obs, e_rew, done, info = self.env.step(action)
             if render: self.env.render()
-            print("rew: {} action {}".format(e_rew, action))
-            i_rew, exp_target = self.calc_intrinsic_reward(obs)
+            i_rew, exp_target = self._calc_intrinsic_reward(obs)
+            #print("rew: {} action {} i_rew {}".format(e_rew, action, i_rew))
             trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
             #update episode statistics
-            self.update_ep_stats(action, e_rew, i_rew, done, info)
+            self._update_ep_stats(action, e_rew, i_rew, done, info)
             last_val_e, last_val_i = val_e, val_i
             step += 1
         self.most_recent_step = (obs, e_rew, done, info)
@@ -123,7 +126,7 @@ class BaseAgent:
         self._log_episode_num += 1
         self._log_training_steps = 0
 
-    def update_ep_stats(self, action, e_rew, i_rew, done, info):
+    def _update_ep_stats(self, action, e_rew, i_rew, done, info):
         self._log_action_count[action] += 1
         self._log_cum_rew_e += e_rew
         self._log_cum_rew_i += i_rew
@@ -138,14 +141,14 @@ class BaseAgent:
                             'death_coords':self._log_death_coords,
                             'training_steps':self._log_training_steps,
                             'max_x':self._log_furthest_point[0],
-                            'score':self._log_info['score'],
+                            'score':info['score'],
                             'external_reward':self._log_cum_rew_e,
                             'internal_reward':self._log_cum_rew_i,}
             episode_log = logger.EpisodeLog(episode_dict)
             self.logger.log_episode(episode_log)
             self._reset_stats()
         
-    def choose_action(self, obs, training=True):
+    def _choose_action(self, obs, training=True):
         """
         Choose an action based on the current observation. Saves computation by not running the value net,
         which makes it a good choice for testing the agent.
@@ -158,7 +161,7 @@ class BaseAgent:
             action = np.argmax(action_probs)
         return action
 
-    def choose_action_get_value(self, obs, training=True):
+    def _choose_action_get_value(self, obs, training=True):
         """
         Run the entire network and return the action probability distribution (not just the chosen action) as well as the values
         from the value net. Used during training -  when more information is needed.
@@ -171,7 +174,7 @@ class BaseAgent:
         val_i = tf.squeeze(self.val_model_i(features))
         return action_prob, action_idx, val_e, val_i
 
-    def calc_intrinsic_reward(self, state):
+    def _calc_intrinsic_reward(self, state):
         """
         reward as described in Random Network Distillation
         """
@@ -194,8 +197,13 @@ class BaseAgent:
         self._gae_running_mean += delta / self._gae_count
         delta2 = gaes - self._gae_running_mean
         self._gae_m2 += delta * delta2
+    
+    def _checkpoint(self, rollout_num):
+        save_path = 'model_zoo/{}/checkpoint_{}'.format(os.path.basename(self.log_dir), rollout_num)
+        if not os.path.exists(save_path): os.makedirs(save_path)
+        self.save_weights(save_path)
 
-    def update_models(self, trajectory, device='/cpu:0'):
+    def _update_models(self, trajectory, device='/cpu:0'):
         """
         Update the vision, policy, value, and exploration (RND) networks based on a utils.Trajectory object generated by a rollout.
         Should be able specify device so that multiple agents can be efficiently trained on the same (multi-gpu) machine.
