@@ -62,12 +62,14 @@ class BaseAgent:
 
         self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
         self.logger = logger.Logger(self.log_dir)
+        self._log_episode_num = 0
+        self._reset_stats()
 
-    def train(self, rollouts, device='/cpu:0'):
+    def train(self, rollouts, device='/cpu:0', render=False):
         past_trajectory = None
         for rollout in range(rollouts):
             print("Rollout #{}".format(rollout))
-            trajectory = self.rollout(self.rollout_length, past_trajectory)
+            trajectory = self.rollout(self.rollout_length, past_trajectory, render=render)
             self.update_models(trajectory, device)
             past_trajectory = deepcopy(trajectory)
 
@@ -84,7 +86,7 @@ class BaseAgent:
                 step += 1
         return cum_rew
 
-    def rollout(self, steps, past_trajectory=None):
+    def rollout(self, steps, past_trajectory=None, render=False):
         """
         Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
         """
@@ -100,60 +102,49 @@ class BaseAgent:
             if done: obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
             action_prob, action, val_e, val_i = self.choose_action_get_value(obs)
             obs, e_rew, done, info = self.env.step(action)
+            if render: self.env.render()
+            print("rew: {} action {}".format(e_rew, action))
             i_rew, exp_target = self.calc_intrinsic_reward(obs)
             trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
             #update episode statistics
-            self.episode_stats(action, e_rew, i_rew, done, info)
+            self.update_ep_stats(action, e_rew, i_rew, done, info)
             last_val_e, last_val_i = val_e, val_i
             step += 1
         self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, self.i_rew_coeff, self.e_rew_coeff, last_val_e, last_val_i)
         return trajectory
     
-    def episode_stats(self, action, e_rew, i_rew, done, info):
-        action_count = [0 for i in range(self.nb_actions)]
-        cum_rew_e, cum_rew_i = 0, 0
-        furthest_point = (0,0)
-        death_coords = []
-        current_lives = 3
-        episode_num = 0
-        training_steps = 0
+    def _reset_stats(self):
+        self._log_action_count = [0 for i in range(self.nb_actions)]
+        self._log_cum_rew_e, self._log_cum_rew_i = 0, 0
+        self._log_furthest_point = (0,0)
+        self._log_death_coords = []
+        self._log_current_lives = 3
+        self._log_episode_num += 1
+        self._log_training_steps = 0
 
-        def reset_stats():
-            nonlocal episode_num
-            action_count = [0 for i in range(self.nb_actions)]
-            cum_rew_e, cum_rew_i = 0, 0
-            furthest_point = (0,0)
-            death_coords = []
-            current_lives = 3
-            episode_num += 1
-            training_steps = 0
-
-        def update_ep_stats(action, e_rew, i_rew, done, info):
-            nonlocal training_steps, cum_rew_e, cum_rew_i, action_count, death_coords, current_lives, furthest_point
-            action_count[action] += 1
-            cum_rew_e += e_rew
-            cum_rew_i += i_rew
-            training_steps += 1
-            if info['lives'] < current_lives:
-                current_lives -= 1
-                current_pos = (info['screen_x'], info['screen_y'])
-                death_coords.append(current_pos)
-                furthest_point = max(furthest_point, current_pos)
-            if done:
-                episode_dict = {'episode_num':episode_num,
-                                'death_coords':death_coords,
-                                'training_steps':training_steps,
-                                'max_x':furthest_point[0],
-                                'score':info['score'],
-                                'external_reward':cum_rew_e,
-                                'internal_reward':cum_rew_i,}
-                episode_log = logger.EpisodeLog(episode_dict)
-                self.logger.log_episode(episode_log)
-                reset_stats()
+    def update_ep_stats(self, action, e_rew, i_rew, done, info):
+        self._log_action_count[action] += 1
+        self._log_cum_rew_e += e_rew
+        self._log_cum_rew_i += i_rew
+        self._log_training_steps += 1
+        if info['lives'] < self._log_current_lives:
+            self._log_current_lives -= 1
+            current_pos = (info['screen_x'], info['screen_y'])
+            self._log_death_coords.append(current_pos)
+            self._log_furthest_point = max(self._log_furthest_point, current_pos)
+        if done:
+            episode_dict = {'episode_num':self._log_episode_num,
+                            'death_coords':self._log_death_coords,
+                            'training_steps':self._log_training_steps,
+                            'max_x':self._log_furthest_point[0],
+                            'score':self._log_info['score'],
+                            'external_reward':self._log_cum_rew_e,
+                            'internal_reward':self._log_cum_rew_i,}
+            episode_log = logger.EpisodeLog(episode_dict)
+            self.logger.log_episode(episode_log)
+            self._reset_stats()
         
-        return update_ep_stats(action, e_rew, i_rew, done, info)
-       
     def choose_action(self, obs, training=True):
         """
         Choose an action based on the current observation. Saves computation by not running the value net,
