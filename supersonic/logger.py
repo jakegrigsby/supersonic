@@ -60,8 +60,6 @@ class Logger:
         ('episode_num', 'internal_reward', 'purple'),
     ]
 
-
-
     def __init__(self, folder_base):
         # Make run directory
         self.run_folder = get_next_run_folder(folder_base + '_')
@@ -118,8 +116,6 @@ class Logger:
         else:
             raise ValueError('Need to provide a plot to append to or options for a new one')
 
-
-
     def _log(self, filepath, filename, dict_obj):
         # print('_log {} to {}'.format(dict_obj, filepath+filename))
         total_file_path = filepath + filename
@@ -130,7 +126,6 @@ class Logger:
         if total_file_path not in self.log_files:
             self.log_files[total_file_path] = open(total_file_path, 'w')
         self.log_files[total_file_path].write(json.dumps(dict_obj) + '\n')
-
 
     def log_trajectory(self, trajectory_log):
         episode_num = episode_log.episode_num
@@ -143,7 +138,10 @@ class Logger:
         episode_log_dict = vars(episode_log)
         self._log(filename, 'episode_logs.csv', episode_log_dict)
         # update Visdom plots
-        self.plot_episode_visdom(filename, episode_log_dict)
+        try:
+            self.plot_episode_visdom(filename, episode_log_dict)
+        except:
+            print("Error with plot_episode_visdom....")
 
     def close(self):
         for log_file in self.log_files:
