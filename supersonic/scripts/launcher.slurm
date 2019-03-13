@@ -14,4 +14,4 @@ module load anaconda/5.2.0-py3.6
 
 containerdir=/scratch/$USER
 #train the agent
-singularity-gpu exec --nv $containerdir/tensorflow-1.12.0-py36.simg python run_single_agent.py
+singularity-gpu exec --nv $containerdir/tensorflow-1.12.0-py36.simg python "$1"
