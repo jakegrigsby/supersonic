@@ -55,3 +55,38 @@ def bucketize_space(space, buckets):
     assert isinstance(space, ContinuousSearchSpace)
     bucketized_range = np.linspace(space.range[0], space.range[1], buckets)
     return DiscreteSearchSpace(bucketized_range)
+
+
+class AgentParamFinder:
+    rollout_length = DiscreteSearchSpace(np.arange(64,2000))
+    ppo_batch_size = DiscreteSearchSpace(np.power(np.asarray([2 for i in range(10)]), np.arange(10)))
+    exp_batch_size = DiscreteSearchSpace(np.power(np.asarray([2 for i in range(7)]), np.arange(7)))
+    ppo_opt_steps = DiscreteSearchSpace(np.arange(3,30,2))
+    ppo_clip_value = DiscreteSearchSpace([.1,.2,.3])
+    e_rew_coeff = ContinuousSearchSpace(1.,3.)
+    i_rew_coeff = ContinuousSearchSpace(1.,3.)
+    exp_train_prop = ContinuousSearchSpace(.1,1.)
+    exp_lr = ContinuousSearchSpace(1e-4, 1e-2)
+    ppo_lr = ContinuousSearchSpace(1e-4, 1e-2)
+    #TODO: Add choices between different vision, policy, value and exploration models
+
+    def __init__(self):
+        raise NotImplementedError()
+    
+    def deploy(self):
+        """Deploy new hyperparameter settings on available nodes"""
+        raise NotImplementedError()
+    
+    def evaluate(self):
+        """Evaluate results of most recent param deployment"""
+        raise NotImplementedError()
+    
+    def adjust(self):
+        """Adjust search spaces"""
+        raise NotImplementedError()
+    
+    def sample(self):
+        """Sample new params from the adjusted search spaces"""
+        raise NotImplementedError()
+
+
