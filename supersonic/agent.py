@@ -152,6 +152,7 @@ class BaseAgent:
         Choose an action based on the current observation. Saves computation by not running the value net,
         which makes it a good choice for testing the agent.
         """
+        obs = tf.convert_to_tensor(obs, dtype=tf.float32)
         features = self.vis_model(obs)
         action_probs = np.squeeze(self.policy_model(features))
         if training:
@@ -165,6 +166,7 @@ class BaseAgent:
         Run the entire network and return the action probability distribution (not just the chosen action) as well as the values
         from the value net. Used during training -  when more information is needed.
         """
+        obs = tf.convert_to_tensor(obs, dtype=tf.float32)
         features = self.vis_model(obs)
         action_probs = np.squeeze(np.transpose(self.policy_model(features)), axis=-1)
         action_idx = np.random.choice(np.arange(self.nb_actions), p=action_probs)
@@ -177,6 +179,7 @@ class BaseAgent:
         """
         reward as described in Random Network Distillation
         """
+        state = tf.convert_to_tensor(state, dtype=tf.float32)
         target = self.exp_target_model(state)
         pred = self.exp_train_model(state)
         rew = np.square(np.subtract(target, pred)).mean()
@@ -259,7 +262,6 @@ class BaseAgent:
     def save_weights(self, path):
         if not os.path.exists(path):
             os.makedirs(path) 
-
         self.vis_model.save_weights(os.path.join(path, 'vis_model'))
         self.policy_model.save_weights(os.path.join(path, 'pol_model'))
         self.val_model_e.save_weights(os.path.join(path, 'val_model_e'))
