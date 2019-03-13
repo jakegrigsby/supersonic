@@ -97,7 +97,7 @@ class BaseAgent:
         if not self.most_recent_step[2]:
             obs, e_rew, done, info = self.most_recent_step
         else:
-            obs, e_rew, done, info = np.expand_dims(self.env.reset(),0), 0, False, {}
+            obs, e_rew, done, info = self.env.reset(), 0, False, {}
         step = 0
         trajectory = utils.Trajectory(self.rollout_length, past_trajectory)
         last_val_e, last_val_i = 0, 0
@@ -107,9 +107,7 @@ class BaseAgent:
             obs, e_rew, done, info = self.env.step(action)
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
-            #print("rew: {} action {} i_rew {}".format(e_rew, action, i_rew))
             trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
-            #update episode statistics
             self._update_ep_stats(action, e_rew, i_rew, done, info)
             last_val_e, last_val_i = val_e, val_i
             step += 1
@@ -247,16 +245,15 @@ class BaseAgent:
                     p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
                     v_loss = tf.reduce_mean(tf.square(rew - val))
                 
-                grads = tape.gradient(p_loss, self.vis_model.variables)
-                p_optimizer.apply_gradients(zip(grads, self.vis_model.variables), global_step=tf.train.get_or_create_global_step())
-                grads = tape.gradient(p_loss, self.policy_model.variables)
-                p_optimizer.apply_gradients(zip(grads, self.policy_model.variables), global_step=tf.train.get_or_create_global_step())
-                grads = tape.gradient(v_loss, self.vis_model.variables)
-                v_optimizer.apply_gradients(zip(grads, self.vis_model.variables), global_step=tf.train.get_or_create_global_step())
-                grads = tape.gradient(v_loss, self.val_model_e.variables)
-                v_optimizer.apply_gradients(zip(grads, self.val_model_e.variables))
-                grads = tape.gradient(v_loss, self.val_model_i.variables)
-                v_optimizer.apply_gradients(zip(grads, self.val_model_i.variables))
+                #update vision model and policy head based on policy loss function
+                variables = self.vis_model.variables + self.policy_model.variables
+                grads = tape.gradient(p_loss, variables)
+                p_optimizer.apply_gradients(zip(grads, variables))
+
+                #update vision model and value heads based on value loss function
+                variables = self.vis_model.variables + self.val_model_e.variables + self.val_model_i.variables
+                grads = tape.gradient(v_loss, variables)
+                v_optimizer.apply_gradients(zip(grads, variables))
                 del tape
     
     def save_weights(self, path):
