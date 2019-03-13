@@ -1,4 +1,6 @@
 
+import math
+
 import numpy as np
 import gym
 import retro
@@ -41,7 +43,7 @@ def build_sonic(lvl):
     env = WarpFrame(env)
     env = AllowBacktracking(env)
     env = ClipReward(env, -5, 5)
-    env = BasicNormalize(env)
+    env = DynamicNormalize(env)
     env = SonicDiscretizer(env)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
@@ -159,29 +161,34 @@ class DynamicNormalize(gym.Wrapper):
 
     def update_stats(self, obs, rew):
         self.count += 1
-
         delta = obs - self.o_mean
-        self.o_mean += delta / self.count
+        self.o_mean += (delta / self.count)
         delta2 = obs - self.o_mean
-        self.o_m2 += delta * delta2
-        self.o_variance = self.o_m2 / self.count 
+        self.o_m2 += (delta * delta2)
         
         delta = rew - self.r_mean
-        self.r_mean += delta / self.count
+        self.r_mean += (delta / self.count)
         delta2 = rew - self.r_mean
-        self.r_m2 += delta * delta2
-        self.r_variance = self.r_m2 / self.count
+        self.r_m2 += (delta * delta2)
 
     def dynamic_normalize(self, obs, rew):
+        obs = obs.astype(np.float32)
         if self.count < self.adapt_until:
             self.update_stats(obs, rew)
-        norm_obs = (obs - self.o_mean) / np.sqrt(self.o_variance + 1e-5)
-        norm_rew = (rew - self.r_mean) / (self.r_variance + 1e-5)**(1/2) 
+        obs_var = self.o_m2 / ((self.count-1) + 1e-4)
+        obs_std = np.sqrt(obs_var)
+        norm_obs = (obs - self.o_mean) / (obs_std + 1e-5)
+
+        rew_var = self.r_m2 / ((self.count-1) + 1e-4)
+        rew_std = math.sqrt(rew_var)
+        norm_rew = (rew - self.r_mean) / (rew_std + 1e-5)
         return norm_obs, norm_rew
 
     def reset_normalization(self):
         self.count = 0
-        self.o_mean, self.o_m2, self.o_variance = [np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))] * 3
+        self.o_mean = [np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))]
+        self.o_m2 = [np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))]
+        self.o_variance = [np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))]
         self.r_mean, self.r_m2, self.r_var = .0, .0, .0
 
     def reset(self, **kwargs):
@@ -197,6 +204,7 @@ class FrameStackWrapper(gym.Wrapper):
         super().__init__(env)
         self.k = k
         self.frames = utils.FrameStack(capacity=k, default_frame=self.env.reset(), dtype=np.float32)
+        self.iter_counter = 0
 
     def reset(self):
         self.env.reset()
@@ -206,6 +214,7 @@ class FrameStackWrapper(gym.Wrapper):
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
         self.frames.append(obs)
+        #if np.any(np.isnan(self.stack)): import pdb; pdb.set_trace()
         return self.stack, rew, done, info
     
     @property
