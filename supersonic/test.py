@@ -4,7 +4,7 @@ import shutil
 
 import numpy as np
 
-from supersonic import environment, utils, random_agent, camera, agent
+from supersonic import environment, utils, random_agent, camera, agent, paramsearch
 
 class EnvironmentTestCase(unittest.TestCase):
     
@@ -142,3 +142,52 @@ class LvlMapsTestCase(unittest.TestCase):
     def test_load_all_maps(self):
         for lvl_id in utils.all_sonic_lvls().keys():
             self.assertIsInstance(utils.get_lvl_map(lvl_id), np.ndarray)
+
+class SearchSpaceTestCase(unittest.TestCase):
+
+    def test_DiscreteSpace(self):
+        space = paramsearch.DiscreteSearchSpace(np.arange(3))
+        self.assertEqual(len(space.space),3)
+        self.assertTrue(space.probs[0] == space.probs[1])
+        self.assertAlmostEqual(np.sum(space.probs), 1.)
+        space.update(0, .17)
+        self.assertAlmostEqual(space.probs[0], .5, 2)
+        self.assertTrue(space.probs[1] == space.probs[2])
+        self.assertAlmostEqual(np.sum(space.probs), 1.)
+        point = space.sample(1)
+        self.assertTrue(point in [0,1,2])
+        #test to make sure discrete spaces initialized w lists do not nest that list
+        space = paramsearch.DiscreteSearchSpace([0,1,2])
+        self.assertEqual(space.space, [0,1,2])
+
+    def test_PowerofNSearchSpace(self):
+        space = paramsearch.PowerofNSearchSpace(2, 0, 3)
+        self.assertEqual(len(space.space),3)
+        self.assertTrue(space.probs[0] == space.probs[1])
+        self.assertAlmostEqual(np.sum(space.probs), 1.)
+        space.update(1, .17)
+        self.assertAlmostEqual(space.probs[0], .5, 2)
+        self.assertTrue(space.probs[1] == space.probs[2])
+        self.assertAlmostEqual(np.sum(space.probs), 1.)
+        point = space.sample(1)
+        self.assertTrue(point in [2**0, 2**1, 2**2])
+    
+    def test_ContinuousSpace(self):
+        space = paramsearch.ContinuousSearchSpace(0,1)
+        point = space.sample(1)
+        self.assertTrue(point >= 0 and point < 1)
+        space.update(.25, .25)
+ 
+    def test_BucketizedSpace(self):
+        space = paramsearch.ContinuousSearchSpace(0,1)
+        space = paramsearch.bucketize_space(space, 10)
+        self.assertEqual(len(space.space),10)
+        self.assertTrue(space.probs[0] == space.probs[1])
+        self.assertAlmostEqual(np.sum(space.probs), 1.)
+        space.update(0., .1)
+        self.assertAlmostEqual(space.probs[0], .2, 2)
+        self.assertTrue(space.probs[1] == space.probs[2])
+        self.assertAlmostEqual(np.sum(space.probs), 1.)
+        point = space.sample(1)
+        self.assertTrue(np.all(np.isin(point, np.linspace(0,1,10))))
+    
