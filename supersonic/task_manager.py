@@ -21,8 +21,8 @@ class TrainingManager:
         #there are 4 gpus per cluster. Assign one agent to each.
         self.device = 'gpu:{}'.format(rank % 4)
     
-    def train(self, epochs):
-        self.agent.train(epochs, self.device)
+    def train(self, rollouts):
+        self.agent.train(rollouts, self.device)
     
     def gather_weights(self):
         self.new_weights = comm.Gather(self.agent.weights, root=0)

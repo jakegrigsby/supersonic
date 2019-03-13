@@ -1,4 +1,9 @@
+import os
+
 import numpy as np
+from mpi4py import MPI
+
+from supersonic import task_manager, utils
 
 class DiscreteSearchSpace:
 
@@ -66,6 +71,7 @@ def bucketize_space(space, buckets):
 
 
 class AgentParamFinder:
+    lvl = DiscreteSearchSpace(utils.all_sonic_lvls().keys())
     rollout_length = DiscreteSearchSpace(np.arange(64,2000))
     ppo_batch_size = PowerofNSearchSpace(2, 1, 11)
     exp_batch_size = PowerofNSearchSpace(2, 1, 8)
@@ -78,9 +84,20 @@ class AgentParamFinder:
     ppo_lr = ContinuousSearchSpace(1e-4, 1e-2)
     #TODO: Add choices between different vision, policy, value and exploration models
 
-    def __init__(self):
-        raise NotImplementedError()
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+
+    def __init__(self, epochs):
+        self.epochs = epochs
     
+    def find_params(self):
+        for epoch in range(self.epochs):
+            self.sample()
+            self.deploy()
+            self.evaluate()
+            self.adjust()
+
     def deploy(self):
         """Deploy new hyperparameter settings on available nodes"""
         raise NotImplementedError()
@@ -96,5 +113,12 @@ class AgentParamFinder:
     def sample(self):
         """Sample new params from the adjusted search spaces"""
         raise NotImplementedError()
-
-
+    
+    def _create_or_empty_dirs(self):
+        for i in range(self.size):
+            weight_path = 'model_zoo/paramsearch_{}'.format(i) 
+            if not os.path.exists(weight_path):
+                os.makedirs(weight_path)
+            else:
+                for filename in os.listdir(weight_path):
+                    os.remove(filename)
