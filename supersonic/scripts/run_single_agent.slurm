@@ -1,12 +1,13 @@
 #!/bin/bash
 #SBATCH -A uva-dsi-mlunder
 #SBATCH -n 1
-#SBATCH -p standard
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:k80:1
+#SBATCH --ntasks-per-node=1
+#SBATCH -o agent.out
 
 #load anaconda and other python packages
 module load anaconda/5.2.0-py3.6
-module load cmake/3.12.3
 source activate cavml
 
 #train the agent
