@@ -1,4 +1,5 @@
 from collections import namedtuple
+import math 
 
 import tensorflow as tf
 from mpi4py import MPI 
@@ -21,7 +22,9 @@ class TrainingManager:
         #there are 4 gpus per cluster. Assign one agent to each.
         self.device = 'gpu:{}'.format(rank % 4)
     
-    def train(self, rollouts):
+    def train(self):
+        #train for just over 1 million frames
+        rollouts = math.ceil(1000000 / self.agent.rollout_length)
         self.agent.train(rollouts, self.device)
     
     def gather_weights(self):

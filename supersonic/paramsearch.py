@@ -72,18 +72,19 @@ def bucketize_space(space, buckets):
 
 class AgentParamFinder:
     lvl = DiscreteSearchSpace(utils.all_sonic_lvls().keys())
-    rollout_length = DiscreteSearchSpace(np.arange(64,2000))
-    ppo_batch_size = PowerofNSearchSpace(2, 1, 11)
-    exp_batch_size = PowerofNSearchSpace(2, 1, 8)
-    ppo_opt_steps = DiscreteSearchSpace(np.arange(3,30,2))
-    ppo_clip_value = DiscreteSearchSpace([.1,.2,.3])
-    e_rew_coeff = ContinuousSearchSpace(1.,3.)
-    i_rew_coeff = ContinuousSearchSpace(1.,3.)
-    exp_train_prop = ContinuousSearchSpace(.1,1.)
-    exp_lr = ContinuousSearchSpace(1e-4, 1e-2)
-    ppo_lr = ContinuousSearchSpace(1e-4, 1e-2)
+    hyperparameters = [
+    rollout_length = DiscreteSearchSpace(np.arange(64,2000)),
+    ppo_batch_size = PowerofNSearchSpace(2, 1, 11),
+    exp_batch_size = PowerofNSearchSpace(2, 1, 8),
+    ppo_opt_steps = DiscreteSearchSpace(np.arange(3,30,2)),
+    ppo_clip_value = DiscreteSearchSpace([.1,.2,.3]),
+    e_rew_coeff = ContinuousSearchSpace(1.,3.),
+    i_rew_coeff = ContinuousSearchSpace(1.,3.),
+    exp_train_prop = ContinuousSearchSpace(.1,1.),
+    exp_lr = ContinuousSearchSpace(1e-4, 1e-2),
+    ppo_lr = ContinuousSearchSpace(1e-4, 1e-2),
     #TODO: Add choices between different vision, policy, value and exploration models
-
+    ]
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     rank = comm.Get_rank()
@@ -100,8 +101,8 @@ class AgentParamFinder:
 
     def deploy(self):
         """Deploy new hyperparameter settings on available nodes"""
-        raise NotImplementedError()
-    
+        self.training_manager.train()
+
     def evaluate(self):
         """Evaluate results of most recent param deployment"""
         raise NotImplementedError()
@@ -112,8 +113,12 @@ class AgentParamFinder:
     
     def sample(self):
         """Sample new params from the adjusted search spaces"""
-        raise NotImplementedError()
-    
+        task_list = []    
+        lvl_choice = self.lvl.sample()
+        for worker in range(self.size):
+            hyp_dict = {
+                exp_lr
+            }
     def _create_or_empty_dirs(self):
         for i in range(self.size):
             weight_path = 'model_zoo/paramsearch_{}'.format(i) 
