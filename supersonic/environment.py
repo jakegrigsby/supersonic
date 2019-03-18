@@ -9,7 +9,8 @@ import cv2
 from supersonic import utils
 
 #don't use the gpu for frame scaling
-cv2.ocl.setUseOpenCL(False)
+USE_GPU_FOR_FRAME_SCALING = False
+cv2.ocl.setUseOpenCL(USE_GPU_FOR_FRAME_SCALING)
 
 
 ENV_BUILDER_REGISTRY = {}
