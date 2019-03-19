@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A uva-dsi-mlunder
 #SBATCH -n 1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=4
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:k80:1
 #SBATCH --ntasks-per-node=1
