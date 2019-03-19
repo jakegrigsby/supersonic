@@ -3,3 +3,4 @@ __pycache__/
 logs/
 *.mp4
 supersonic.egg_info/
+*.egg-info/
