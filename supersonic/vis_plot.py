@@ -44,7 +44,7 @@ class VisdomLogger:
 	def make_episode_line_plot(self, x_key, y_key, color=None):
 		plot_title = '{} vs. {}'.format(y_key, x_key)
 		opts = dict(
-			title=self.run_name,
+			title=plot_title,
 			xlabel=x_key,
 			ylabel=y_key,
 			linecolor=VisdomLogger.convert_color(color),
@@ -91,6 +91,9 @@ def main():
 
 	episode_log = LOG_FOLDER + FLAGS.run + '/' + EPISODE_FILENAME
 	logs = get_dicts_from_json_file(episode_log)
+
+	if len(logs) < 1:
+		raise Exception('Need multiple logs to produce plots.')
 
 	viz = VisdomLogger(FLAGS.server, FLAGS.port, FLAGS.run, logs)
 	viz.render()
