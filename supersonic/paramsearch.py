@@ -3,7 +3,7 @@ import os
 import numpy as np
 from mpi4py import MPI
 
-from supersonic import task_manager, utils
+from supersonic import task_manager, utils, agent
 
 class DiscreteSearchSpace:
 
@@ -83,21 +83,34 @@ class AgentParamFinder:
     exp_train_prop = ContinuousSearchSpace(.1,1.),
     exp_lr = ContinuousSearchSpace(1e-4, 1e-2),
     ppo_lr = ContinuousSearchSpace(1e-4, 1e-2),
-    #TODO: Add choices between different vision, policy, value and exploration models
+    vis_model = DiscreteSearchSpace(['NatureVision']),
+    policy_model = DiscreteSearchSpace(['NaturePolicy']),
+    val_model = DiscreteSearchSpace(['VanillaValue']),
+    exp_target_model = DiscreteSearchSpace(['NatureVision']),
+    exp_train_model = DiscreteSearchSpace(['NatureVision']),
     ]
+
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     rank = comm.Get_rank()
+    round_num = 0
 
     def __init__(self, epochs):
         self.epochs = epochs
     
     def find_params(self):
         for epoch in range(self.epochs):
-            self.sample()
+            self.round_num = epoch
+            if self.rank == 0:
+                hyp_dict = self.sample()
+            hyp_dict = comm.bcast(hyp_dict, root=0) 
+            log_dir = 'paramsearch/round{}/run{}'.format(self.round_num, self.rank)
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+            task_list = [task_manager.Task(self.lvl.sample(), hyp_dict, log_dir) for worker in range(self.size)]
+            self.training_manager = task_manager.TrainingManager(task_list, agent.ppo_agent)
             self.deploy()
-            self.evaluate()
-            self.adjust()
+            utils.save_hyp_dict_to_file(log_dir + "_hyp_dict.json", hyp_dict)
 
     def deploy(self):
         """Deploy new hyperparameter settings on available nodes"""
@@ -105,25 +118,34 @@ class AgentParamFinder:
 
     def evaluate(self):
         """Evaluate results of most recent param deployment"""
-        raise NotImplementedError()
+        pass
     
     def adjust(self):
         """Adjust search spaces"""
-        raise NotImplementedError()
+        pass
     
     def sample(self):
         """Sample new params from the adjusted search spaces"""
-        task_list = []    
-        lvl_choice = self.lvl.sample()
-        for worker in range(self.size):
-            hyp_dict = {
-                exp_lr
-            }
-    def _create_or_empty_dirs(self):
-        for i in range(self.size):
-            weight_path = 'model_zoo/paramsearch_{}'.format(i) 
-            if not os.path.exists(weight_path):
-                os.makedirs(weight_path)
-            else:
-                for filename in os.listdir(weight_path):
-                    os.remove(filename)
+        hyp_dict = {
+            "exp_lr":self.exp_lr.sample(),
+            "ppo_lr":self.ppo_lr.sample(),
+            "vis_model":self.vis_model.sample(),
+            "policy_model":self.policy_model.sample(),
+            "val_model":self.val_model.sample(),
+            "exp_target_model":self.exp_target_model.sample(),
+            "exp_train_model":self.exp_train_model.sample(),
+            "exp_net_opt_steps":self.exp_net_opt_steps.sample(),
+            "gamma_i":self.gamma_i.sample(),
+            "gamma_e":self.gamma_e.sample(),
+            "rollout_length":self.rollout_length.sample(),
+            "ppo_net_opt_steps":self.ppo_ne_opt_steps.sample(),
+            "e_rew_coeff":self.e_rew_coeff.sample(),
+            "i_rew_coeff":self.i_rew_coeff.sample(),
+            "exp_train_prop":self.exp_train_prop.sample(),
+            "lam":self.lam.sample(),
+            "exp_batch_size":self.exp_batch_size.sample(),
+            "ppo_batch_size":self.ppo_batch_size.sample(),
+            "ppo_clip_value":self.ppo_clip_value.sample(),
+            "update_mean_gae_until":self.update_mean_gae_until.sample(),
+        }
+        return hyp_dict

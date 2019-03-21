@@ -19,9 +19,9 @@ class BaseAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.001, ppo_lr=.0005, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=4, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=32,
+                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.2, update_mean_gae_until=10000, checkpoint_interval=10000):
         
         tf.enable_eager_execution()
@@ -73,7 +73,7 @@ class BaseAgent:
             trajectory = self._rollout(self.rollout_length, past_trajectory, render=render)
             self._update_models(trajectory, device)
             past_trajectory = deepcopy(trajectory)
-            if rollout % self.checkpoint_interval == 0:
+            if self.checkpoint_interval and rollout % self.checkpoint_interval == 0:
                 self._checkpoint(rollout)
 
     def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
@@ -247,6 +247,7 @@ class BaseAgent:
                     min_gae = tf.where(gae>0, (1+self.clip_value)*gae, (1-self.clip_value)*gae)
                     p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
                     v_loss = tf.reduce_mean(tf.square(rew - val))
+                    print("Policy loss {} Value loss {}".format(p_loss, v_loss))
                 
                 #update vision model and policy head based on policy loss function
                 variables = self.vis_model.variables + self.policy_model.variables
@@ -276,3 +277,21 @@ class BaseAgent:
         self.val_model_i.load_weights(os.path.join(path, 'val_model_i'))
         self.exp_train_model.load_weights(os.path.join(path, 'exp_train_model'))
         self.exp_target_model.load_weights(os.path.join(path, 'exp_target_model'))
+    
+    @property
+    def weights(self):
+        return [self.vis_model.weights,
+                self.policy_model.weights,
+                self.val_model_e.weights,
+                self.val_model_i.weights,
+                self.exp_target_model.weights,
+                self.exp_train_model.weights]
+    
+    @weights.setter
+    def weights(self, new_weights):
+        self.vis_model.weights = new_weights[0]
+        self.policy_model.weights = new_weights[1]
+        self.val_model_e.weights = new_weights[2]
+        self.val_model_i.weights = new_weights[3]
+        self.exp_target_model.weights = new_weights[4]
+        self.exp_target_model.weights = new_weights[5]

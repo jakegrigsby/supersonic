@@ -141,7 +141,7 @@ class Logger:
         try:
             self.plot_episode_visdom(filename, episode_log_dict)
         except:
-            print("Error with plot_episode_visdom....")
+            print("VISDOM ERROR")
 
     def close(self):
         for log_file in self.log_files:

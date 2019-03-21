@@ -150,10 +150,11 @@ class DynamicNormalize(gym.Wrapper):
 
     adapt_until: adjust the mean and variance for this many steps
     """
-    def __init__(self, env, adapt_until=10000):
+    def __init__(self, env, adapt_until=10000, normalize_rew=False):
         super().__init__(env)
         self.adapt_until = adapt_until
         self.reset_normalization()
+        self.normalize_rew = normalize_rew
         
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
@@ -180,10 +181,12 @@ class DynamicNormalize(gym.Wrapper):
         obs_std = np.sqrt(obs_var)
         norm_obs = (obs - self.o_mean) / (obs_std + 1e-5)
 
-        rew_var = self.r_m2 / ((self.count-1) + 1e-4)
-        rew_std = math.sqrt(rew_var)
-        norm_rew = (rew - self.r_mean) / (rew_std + 1e-5)
-        return norm_obs, norm_rew
+        if self.normalize_rew:
+            rew_var = self.r_m2 / ((self.count-1) + 1e-4)
+            rew_std = math.sqrt(rew_var)
+            rew = (rew - self.r_mean) / (rew_std + 1e-5)
+
+        return norm_obs, rew
 
     def reset_normalization(self):
         self.count = 0
