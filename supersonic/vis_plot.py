@@ -1,4 +1,4 @@
-import argparse, json, webcolors
+import argparse, datetime, json, webcolors
 import numpy as np
 from visdom import Visdom
 
@@ -54,7 +54,17 @@ class VisdomLogger:
 		# title = '{} vs. {}'.format(y_key, x_key)
 		self.viz.line(X=x, Y=y, opts=opts)
 
+	def make_info_box(self):
+		current_time = datetime.datetime.now()
+		date = current_time.strftime("%Y-%m-%d %H:%M:%S")
+		info_html = '<h4>Updated at {} with {} episodes.</h4>'.format(
+			date, len(self.logs)
+		)
+		self.viz.text(info_html)
+
 	def render(self):
+		# Draw info.
+		self.make_info_box()
 		# Draw line charts.
 		for x_key, y_key, color in VisdomLogger.EPISODE_LINE_PLOTS:
 			self.make_episode_line_plot(x_key, y_key, color=color)
