@@ -3,7 +3,7 @@ import os
 import numpy as np
 from mpi4py import MPI
 
-from supersonic import task_manager, utils
+from supersonic import task_manager, utils, agent
 
 class DiscreteSearchSpace:
 
@@ -108,8 +108,9 @@ class AgentParamFinder:
             if not os.path.exists(log_dir):
                 os.makedirs(log_dir)
             task_list = [task_manager.Task(self.lvl.sample(), hyp_dict, log_dir) for worker in range(self.size)]
-            self.training_manager = task_manager.TrainingManager(task_list, agent.BaseAgent)
+            self.training_manager = task_manager.TrainingManager(task_list, agent.ppo_agent)
             self.deploy()
+            utils.save_hyp_dict_to_file(log_dir + "_hyp_dict.json", hyp_dict)
 
     def deploy(self):
         """Deploy new hyperparameter settings on available nodes"""

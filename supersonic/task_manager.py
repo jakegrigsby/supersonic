@@ -31,7 +31,7 @@ class TrainingManager:
         self.new_weights = comm.Gather(self.agent.weights, root=0)
     
     def send_weights(self, weights):
-        self.agent.weigts = comm.Bcast(weights, root=0)
+        self.agent.weights = comm.Bcast(weights, root=0)
 
 
 

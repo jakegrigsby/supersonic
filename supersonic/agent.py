@@ -73,7 +73,7 @@ class BaseAgent:
             trajectory = self._rollout(self.rollout_length, past_trajectory, render=render)
             self._update_models(trajectory, device)
             past_trajectory = deepcopy(trajectory)
-            if rollout % self.checkpoint_interval == 0:
+            if self.checkpoint_interval and rollout % self.checkpoint_interval == 0:
                 self._checkpoint(rollout)
 
     def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
@@ -105,7 +105,6 @@ class BaseAgent:
             if done: obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
             action_prob, action, val_e, val_i = self._choose_action_get_value(obs)
             obs, e_rew, done, info = self.env.step(action)
-            if action == 1: e_rew += 1e-4
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
             trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
@@ -278,3 +277,21 @@ class BaseAgent:
         self.val_model_i.load_weights(os.path.join(path, 'val_model_i'))
         self.exp_train_model.load_weights(os.path.join(path, 'exp_train_model'))
         self.exp_target_model.load_weights(os.path.join(path, 'exp_target_model'))
+    
+    @property
+    def weights(self):
+        return [self.vis_model.weights,
+                self.policy_model.weights,
+                self.val_model_e.weights,
+                self.val_model_i.weights,
+                self.exp_target_model.weights,
+                self.exp_train_model.weights]
+    
+    @weights.setter
+    def weights(self, new_weights):
+        self.vis_model.weights = new_weights[0]
+        self.policy_model.weights = new_weights[1]
+        self.val_model_e.weights = new_weights[2]
+        self.val_model_i.weights = new_weights[3]
+        self.exp_target_model.weights = new_weights[4]
+        self.exp_target_model.weights = new_weights[5]
