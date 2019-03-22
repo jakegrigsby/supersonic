@@ -104,12 +104,13 @@ class BaseAgent:
             if done: obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
             action_prob, action, val_e, val_i = self._choose_action_get_value(obs)
             val_e, val_i = (val_e, val_i) if not done else (0, 0)
-            obs, e_rew, done, info = self.env.step(action)
+            obs2, e_rew, done, info = self.env.step(action)
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
             trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
             self._update_ep_stats(action, e_rew, i_rew, done, info)
             step += 1
+            obs = obs2
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, self.i_rew_coeff, self.e_rew_coeff, last_val_e, last_val_i)
