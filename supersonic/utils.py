@@ -105,7 +105,7 @@ class Trajectory:
         self.vals_e.append(val_e)
         self.vals_i.append(val_i)
         self.exp_targets.append(np.squeeze(exp_target))
-    
+
     def _lists_to_ndarrays(self):
         self.states = np.asarray(self.states)[:self.rollout_length]
         self.rews_i = np.asarray(self.rews_i)[:self.rollout_length]

@@ -23,7 +23,7 @@ class BaseAgent:
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
                     rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.2, update_mean_gae_until=10000, checkpoint_interval=10000):
-        
+
         tf.enable_eager_execution()
 
         self.env = environment.auto_env(env_id)
@@ -100,21 +100,21 @@ class BaseAgent:
             obs, e_rew, done, info = self.env.reset(), 0, False, {}
         step = 0
         trajectory = utils.Trajectory(self.rollout_length, past_trajectory)
-        last_val_e, last_val_i = 0, 0
         while step < steps:
             if done: obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
             action_prob, action, val_e, val_i = self._choose_action_get_value(obs)
+            val_e, val_i = (val_e, val_i) if not done else (0, 0)
             obs, e_rew, done, info = self.env.step(action)
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
             trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
             self._update_ep_stats(action, e_rew, i_rew, done, info)
-            last_val_e, last_val_i = val_e, val_i
             step += 1
+        _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, self.i_rew_coeff, self.e_rew_coeff, last_val_e, last_val_i)
         return trajectory
-    
+
     def _reset_stats(self):
         self._log_action_count = [0 for i in range(self.nb_actions)]
         self._log_cum_rew_e, self._log_cum_rew_i = 0, 0
@@ -146,7 +146,7 @@ class BaseAgent:
             episode_log = logger.EpisodeLog(episode_dict)
             self.logger.log_episode(episode_log)
             self._reset_stats()
-        
+
     def _choose_action(self, obs, training=True):
         """
         Choose an action based on the current observation. Saves computation by not running the value net,
@@ -184,7 +184,7 @@ class BaseAgent:
         pred = self.exp_train_model(state)
         rew = np.square(np.subtract(target, pred)).mean()
         return rew, target #save targets to trajectory to avoid another call to the exp_target_model network during update_models()
-    
+
     def _normalize_gaes(self, gaes):
         if self._gae_count < self.update_mean_gae_until:
             self._update_gae_normalization(gaes)
@@ -192,14 +192,14 @@ class BaseAgent:
         std = np.sqrt(var)
         gaes = (gaes - self._gae_running_mean) / (std + 1e-3)
         return gaes
-    
+
     def _update_gae_normalization(self, gaes):
         self._gae_count += 1
         delta = gaes - self._gae_running_mean
         self._gae_running_mean += delta / self._gae_count
         delta2 = gaes - self._gae_running_mean
         self._gae_m2 += delta * delta2
-    
+
     def _checkpoint(self, rollout_num):
         save_path = 'weights/{}/checkpoint_{}'.format(os.path.basename(self.log_dir), rollout_num)
         if not os.path.exists(save_path): os.makedirs(save_path)
@@ -248,7 +248,7 @@ class BaseAgent:
                     p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
                     v_loss = tf.reduce_mean(tf.square(rew - val))
                     print("Policy loss {} Value loss {}".format(p_loss, v_loss))
-                
+
                 #update vision model and policy head based on policy loss function
                 variables = self.vis_model.variables + self.policy_model.variables
                 grads = tape.gradient(p_loss, variables)
@@ -259,17 +259,17 @@ class BaseAgent:
                 grads = tape.gradient(v_loss, variables)
                 v_optimizer.apply_gradients(zip(grads, variables))
                 del tape
-    
+
     def save_weights(self, path):
         if not os.path.exists(path):
-            os.makedirs(path) 
+            os.makedirs(path)
         self.vis_model.save_weights(os.path.join(path, 'vis_model'))
         self.policy_model.save_weights(os.path.join(path, 'pol_model'))
         self.val_model_e.save_weights(os.path.join(path, 'val_model_e'))
         self.val_model_i.save_weights(os.path.join(path, 'val_model_i'))
         self.exp_train_model.save_weights(os.path.join(path, 'exp_train_model'))
         self.exp_target_model.save_weights(os.path.join(path, 'exp_target_model'))
-    
+
     def load_weights(self, path):
         self.vis_model.load_weights(os.path.join(path, 'vis_model'))
         self.policy_model.load_weights(os.path.join(path, 'pol_model'))
@@ -277,7 +277,7 @@ class BaseAgent:
         self.val_model_i.load_weights(os.path.join(path, 'val_model_i'))
         self.exp_train_model.load_weights(os.path.join(path, 'exp_train_model'))
         self.exp_target_model.load_weights(os.path.join(path, 'exp_target_model'))
-    
+
     @property
     def weights(self):
         return [self.vis_model.weights,
@@ -286,7 +286,7 @@ class BaseAgent:
                 self.val_model_i.weights,
                 self.exp_target_model.weights,
                 self.exp_train_model.weights]
-    
+
     @weights.setter
     def weights(self, new_weights):
         self.vis_model.weights = new_weights[0]
