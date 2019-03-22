@@ -42,7 +42,7 @@ def build_sonic(lvl):
     game = utils.get_game_from_sonic_lvl(lvl)
     env = base_env(game, lvl)
     env = WarpFrame(env)
-    env = AllowBacktracking(env)
+    env = AllowBacktrackingAddMaxSteps(env, max_steps=4500)
     env = ClipReward(env, -5, 5)
     env = DynamicNormalize(env)
     env = SonicDiscretizer(env)
@@ -234,26 +234,36 @@ class RewardScaler(gym.RewardWrapper):
         return reward * .01
 
 
-class AllowBacktracking(gym.Wrapper):
+class AllowBacktrackingAddMaxSteps(gym.Wrapper):
     """
     Let the agent go backwards without losing reward.
     Important for Sonic.
     """
-    def __init__(self, env):
+    def __init__(self, env, max_steps=4500):
         super().__init__(env)
         self._cur_x = 0
         self._max_x = 0
+        self._max_steps = max_steps
+        self._step_count = 0
+        self._last_info = {}
 
     def reset(self, **kwargs):
         self._cur_x = 0
         self._max_x = 0
+        self._step_count = 0
+        self._last_info = {}
         return self.env.reset(**kwargs)
 
     def step(self, action):
-        obs, rew, done, info = self.env.step(action)
-        self._cur_x += rew
-        rew = max(0, self._cur_x - self._max_x)
-        self._max_x = max(self._max_x, self._cur_x)
+        if self._step_count >= self._max_steps:
+            obs, rew, done, info = self.env.reset(), 0, True, self._last_info
+        else:
+            obs, rew, done, info = self.env.step(action)
+            self._cur_x += rew
+            rew = max(0, self._cur_x - self._max_x)
+            self._max_x = max(self._max_x, self._cur_x)
+            self._step_count += 1
+            self._last_info = info
         return obs, rew, done, info
 
 class SonicDiscretizer(gym.ActionWrapper):
