@@ -3,8 +3,6 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from visdom import Visdom
-
 
 COUNTER_DIGITS = 2
 
@@ -37,12 +35,6 @@ def run_num_str(run_num):
         run = '0' + run
     return run
 
-def init_visdom():
-    PORT = 8097
-    HOST = 'http://localhost'
-    viz = Visdom(port=PORT, server=HOST)
-    return viz
-
 class Logger:
     """
     Allows users to save information to disk at the end of every Episode and Trajectory.
@@ -66,55 +58,6 @@ class Logger:
         os.makedirs(self.run_folder)
         # Keep cache of open files
         self.log_files = {}
-        # Write directly to Visdom if possible
-        self.visdom = init_visdom()
-        # Maintain cache of visdom plots
-        self.viz_plots = {}
-
-    def plot_episode_visdom(self, filename, dict_obj):
-        # If we don't have visdom session, first try and reconnect
-        if not self.visdom.check_connection():
-            return
-        # Then iterate through and create all plots
-        for x_key, y_key, line_color in Logger.EPISODE_LINE_PLOTS:
-            plot_title = '{} vs. {}'.format(y_key, x_key)
-            plot_name = filename + plot_title
-            if plot_name in self.viz_plots:
-                plot = self.viz_plots[plot_name]
-                opts = None
-            else:
-                plot = None
-                # Convert 'navy' to (0,0,128)
-                if isinstance(line_color, str):
-                    line_color = webcolors.name_to_rgb(line_color)
-                line_color_arg = np.array([line_color])
-                opts = dict(
-                    title=plot_title, 
-                    xlabel=x_key, 
-                    ylabel=y_key,
-                    linecolor=line_color_arg,
-                )
-
-            x = dict_obj[x_key]
-            y = dict_obj[y_key]
-            self.plot_visdom_line(plot_name, x, y, plot=plot, opts=opts)
-
-    def plot_visdom_line(self, plot_name, x, y, plot=None, opts=None):
-        ''' Creates or appends an (x,y) coordinate to a line plot in Visdom. '''
-        if opts:
-            self.viz_plots[plot_name] = self.visdom.line(
-                X=[x], 
-                Y=[y], 
-                opts=opts
-            )
-        elif plot:
-            self.visdom.line(
-                X=[x], 
-                Y=[y], 
-                win=plot, 
-                update='append')
-        else:
-            raise ValueError('Need to provide a plot to append to or options for a new one')
 
     def _log(self, filepath, filename, dict_obj):
         # print('_log {} to {}'.format(dict_obj, filepath+filename))
@@ -137,11 +80,6 @@ class Logger:
         filename = self.run_folder
         episode_log_dict = vars(episode_log)
         self._log(filename, 'episode_logs.csv', episode_log_dict)
-        # update Visdom plots
-        try:
-            self.plot_episode_visdom(filename, episode_log_dict)
-        except:
-            print("VISDOM ERROR")
 
     def close(self):
         for log_file in self.log_files:
@@ -155,8 +93,8 @@ class EpisodeLog:
     """
     required_params = ['episode_num', 'death_coords', 'training_steps', 'max_x', 'score', 'external_reward', 'internal_reward', 'action_count']
     def __init__(self, params):
-        for required_param in self.required_params: 
-            if required_param not in params: 
+        for required_param in self.required_params:
+            if required_param not in params:
                 raise ValueError('EpisodeLog constructor missing required param {}'.format(required_param))
         # Episode number
         self.episode_num = params['episode_num']
@@ -174,9 +112,9 @@ class EpisodeLog:
         self.action_count = params['action_count']
         # @TODO: implement action distribution, video playback buffer
 
-    # Function __dir()___ which list all  
-    # the base attributes to be used. 
-    # def __dir__(self): 
+    # Function __dir()___ which list all
+    # the base attributes to be used.
+    # def __dir__(self):
     #     return self.required_params
 
 class TrajectoryLog:
