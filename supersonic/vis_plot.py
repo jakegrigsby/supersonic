@@ -70,9 +70,9 @@ class VisdomLogger:
 		for x_key, y_key, color in VisdomLogger.EPISODE_LINE_PLOTS:
 			self.make_episode_line_plot(x_key, y_key, color=color)
 		# Draw scatter charts.
-		for hist_key in VisdomLogger.EPISODE_SCATTER_PLOTS:
-			data = [entry[hist_key][0] for entry in self.logs]
-			self.make_episode_scatter_plot(data, title=hist_key)
+		for key in VisdomLogger.EPISODE_SCATTER_PLOTS:
+			data = [entry[key][0] for entry in self.logs if len(entry[key])]
+			self.make_episode_scatter_plot(data, title='{} scatterplot'.format(key))
 
 def get_dicts_from_json_file(filename):
 	lines = open(filename).readlines()
