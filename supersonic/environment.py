@@ -257,6 +257,7 @@ class AllowBacktrackingAddMaxSteps(gym.Wrapper):
     def step(self, action):
         if self._step_count >= self._max_steps:
             obs, rew, done, info = self.env.reset(), 0, True, self._last_info
+            info["FORCED EXIT"] = True
         else:
             obs, rew, done, info = self.env.step(action)
             self._cur_x += rew

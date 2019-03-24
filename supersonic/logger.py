@@ -67,8 +67,9 @@ class Logger:
         except FileExistsError:
             pass
         if total_file_path not in self.log_files:
-            self.log_files[total_file_path] = open(total_file_path, 'w')
+            self.log_files[total_file_path] = open(total_file_path, 'a')
         self.log_files[total_file_path].write(json.dumps(dict_obj) + '\n')
+        self.close()
 
     def log_trajectory(self, trajectory_log):
         episode_num = episode_log.episode_num
