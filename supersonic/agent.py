@@ -111,7 +111,7 @@ class BaseAgent:
             self._update_ep_stats(action, e_rew, i_rew, done, info)
             step += 1
             obs = obs2
-        _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0)
+        _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, self.i_rew_coeff, self.e_rew_coeff, last_val_e, last_val_i)
         return trajectory
@@ -136,6 +136,9 @@ class BaseAgent:
             self._log_death_coords.append(current_pos)
             self._log_furthest_point = max(self._log_furthest_point, current_pos)
         if done:
+            if "FORCED EXIT" in info:
+                self._log_death_coords = (info['screen_x'], info['screen_y'])
+                self._log_furthest_point = self._log_death_coords
             episode_dict = {'episode_num':self._log_episode_num,
                             'death_coords':self._log_death_coords,
                             'training_steps':self._log_training_steps,
