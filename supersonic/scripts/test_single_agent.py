@@ -18,5 +18,5 @@ if __name__ == "__main__":
     if not os.path.exists(record_path):
         os.makedirs(record_path)
     cam.start_recording(os.path.join(record_path, 'testvid'))
-    sonic.test(1, render=True, max_ep_steps=100)
+    sonic.test(1, render=True, max_ep_steps=4500)
     cam.stop_recording()

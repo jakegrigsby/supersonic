@@ -132,7 +132,11 @@ class Trajectory:
         self.rews = np.expand_dims((i_rew_coeff*i_rews) + (e_rew_coeff*e_rews), axis=-1).astype(np.float32)
 
     def discount_cumsum(self, x, discount):
-        return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
+        r = x[::-1]
+        a = [1, -discount]
+        b = [1]
+        y = scipy.signal.lfilter(b, a, x=x)
+        return np.squeeze(y[::-1])
 
 #########################################################################################
 
