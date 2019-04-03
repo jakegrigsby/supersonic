@@ -35,12 +35,12 @@ class VisdomLogger:
 		rgb = webcolors.name_to_rgb(color)
 		return np.array([rgb])
 
-	def make_episode_scatter_plot(self, x, title='Histogram'):
+	def make_episode_scatter_plot(self, x=None, y=None, title='Histogram'):
 		opts = dict(
 			title=title,
             markersymbol='cross-thin-open',
 		)
-		self.viz.scatter(X=x, opts=opts)
+		self.viz.scatter(X=np.column_stack([x,y]), opts=opts)
 
 	def make_episode_line_plot(self, x_key, y_key, color=None):
 		plot_title = '{} vs. {}'.format(y_key, x_key)
@@ -71,8 +71,10 @@ class VisdomLogger:
 			self.make_episode_line_plot(x_key, y_key, color=color)
 		# Draw scatter charts.
 		for key in VisdomLogger.EPISODE_SCATTER_PLOTS:
-			data = [entry[key][0] for entry in self.logs if len(entry[key])]
-			self.make_episode_scatter_plot(data, title='{} scatterplot'.format(key))
+			arr = np.array([entry[key] for entry in self.logs if len(entry[key])])
+			arr = [np.array(b).flatten() for b in arr]
+			x, y = list(zip(*arr))
+			self.make_episode_scatter_plot(x=x, y=y, title='{} scatterplot'.format(key))
 
 def get_dicts_from_json_file(filename):
 	lines = open(filename).readlines()
