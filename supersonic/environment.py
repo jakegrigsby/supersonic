@@ -15,7 +15,10 @@ cv2.ocl.setUseOpenCL(USE_GPU_FOR_FRAME_SCALING)
 
 ENV_BUILDER_REGISTRY = {}
 def env_builder(keys):
-    keys = list(keys) if not type(keys) == list else keys
+    if type(keys) == str:
+        keys = [keys]
+    elif not type(keys) == list:
+        keys = list(keys)
     def register(func):
         for key in keys:
             ENV_BUILDER_REGISTRY[key] = func
@@ -48,8 +51,15 @@ def build_sonic(lvl):
     env = SonicDiscretizer(env)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
+    env.SONIC = True
     return env
 
+@env_builder('Boxing-v0')
+def build_boxing(lvl):
+    env = base_env(lvl)
+    env = WarpFrame(env)
+    env = FrameStackWrapper(env)
+    return env
 
 def base_env(*args, **kwargs):
     """

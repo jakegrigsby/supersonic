@@ -21,12 +21,17 @@ class BaseAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=8, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=32,
+                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=2., i_rew_coeff=1., exp_train_prop=.5, lam=.99, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.2, update_mean_gae_until=10000, checkpoint_interval=10000):
 
         tf.enable_eager_execution()
 
         self.env = environment.auto_env(env_id)
+        try:
+            self.env_is_sonic = self.env.SONIC
+        except:
+            self.env_is_sonic = False
+
         self.most_recent_step = self.env.reset(), 0, False, {}
         self.nb_actions = self.env.action_space.n
 
@@ -108,7 +113,8 @@ class BaseAgent:
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
             trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
-            self._update_ep_stats(action, e_rew, i_rew, done, info)
+            if self.env_is_sonic:
+                self._update_ep_stats(action, e_rew, i_rew, done, info)
             step += 1
             obs = obs2
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
@@ -177,7 +183,7 @@ class BaseAgent:
         action_prob = action_probs[action_idx]
         val_e = tf.squeeze(self.val_model_e(features))
         val_i = tf.squeeze(self.val_model_i(features))
-        return action_prob, action_idx, val_e, val_i
+        return tf.log(action_prob), action_idx, val_e, val_i
 
     def _calc_intrinsic_reward(self, state):
         """
@@ -198,7 +204,7 @@ class BaseAgent:
         return gaes
 
     def _update_gae_normalization(self, gaes):
-        self._gae_count += 1
+        self._gae_count += self.rollout_length
         delta = gaes - self._gae_running_mean
         self._gae_running_mean += delta / self._gae_count
         delta2 = gaes - self._gae_running_mean
@@ -247,7 +253,7 @@ class BaseAgent:
                     val_e = self.val_model_e(features)
                     val_i = self.val_model_i(features)
                     val = val_e + val_i
-                    ratio = tf.exp(tf.log(new_act_prob) - tf.log(old_act_prob))
+                    ratio = tf.exp(new_act_prob - old_act_prob)
                     min_gae = tf.where(gae>0, (1+self.clip_value)*gae, (1-self.clip_value)*gae)
                     p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
                     v_loss = tf.reduce_mean(tf.square(rew - val))
