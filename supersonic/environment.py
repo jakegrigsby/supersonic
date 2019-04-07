@@ -58,6 +58,7 @@ def build_sonic(lvl):
 def build_boxing(lvl):
     env = base_env(lvl)
     env = WarpFrame(env)
+    env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
     return env
 
