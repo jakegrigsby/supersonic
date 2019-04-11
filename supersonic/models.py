@@ -62,10 +62,12 @@ class VanillaValue(tf.keras.Model):
     def __init__(self, reg=0.01):
         super().__init__()
         self.dense1 = tf.keras.layers.Dense(256, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(reg))
+        self.dense2 = tf.keras.layers.Dense(64, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(reg))
         self.val = tf.keras.layers.Dense(1, activation='linear', kernel_regularizer=tf.keras.regularizers.l2(reg))
 
     def call(self, inputs):
         x = self.dense1(inputs)
+        x = self.dense2(x)
         x = self.val(x)
         return x
 

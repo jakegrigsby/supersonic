@@ -116,7 +116,7 @@ class Trajectory:
         self.exp_targets = np.asarray(self.exp_targets)[:self.rollout_length]
         self.actions = np.asarray(self.actions)[:self.rollout_length]
 
-    def end_trajectory(self, gamma_i, gamma_e, lam, i_rew_coeff, e_rew_coeff, last_val_i, last_val_e):
+    def end_trajectory(self, gamma_i, gamma_e, lam, last_val_i, last_val_e):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
         #calculate advantages
         self.vals_e.append(last_val_e)
@@ -127,9 +127,8 @@ class Trajectory:
         deltas = self.rews_i + gamma_i * (self.vals_i[1:] - self.vals_i[:-1])
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
         self.gaes = np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32)
-        i_rews = np.asarray(self.discount_cumsum(self.rews_i, gamma_i))
-        e_rews = np.asarray(self.discount_cumsum(self.rews_e, gamma_e))
-        self.rews = np.expand_dims((i_rew_coeff*i_rews) + (e_rew_coeff*e_rews), axis=-1).astype(np.float32)
+        self.i_rews = np.asarray(self.discount_cumsum(self.rews_i, gamma_i)).astype(np.float32)
+        self.e_rews = np.asarray(self.discount_cumsum(self.rews_e, gamma_e)).astype(np.float32)
 
     def discount_cumsum(self, x, discount):
         r = x[::-1]

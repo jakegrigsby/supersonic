@@ -21,8 +21,8 @@ class BaseAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=8, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=1.0, exp_train_prop=.5, lam=.99, exp_batch_size=32,
-                    ppo_batch_size=32, ppo_clip_value=0.2, update_mean_gae_until=10000, checkpoint_interval=10000, minkl=None, random_actions=10000):
+                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=2., i_rew_coeff=.5, vf_coeff=.2, exp_train_prop=.5, lam=.99, exp_batch_size=32,
+                    ppo_batch_size=32, ppo_clip_value=0.1, update_mean_gae_until=10000, checkpoint_interval=10000, minkl=None, random_actions=100):
 
         tf.enable_eager_execution()
 
@@ -114,20 +114,22 @@ class BaseAgent:
         step = 0
         trajectory = utils.Trajectory(self.rollout_length, past_trajectory)
         while step < steps:
-            if done: obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
+            if done: 
+                obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
+                if self.env_is_sonic: self.env.max_steps = min(self.env.max_steps + 50, 4500)
             action_prob, action, val_e, val_i = self._choose_action_get_value(obs)
             val_e, val_i = (val_e, val_i) if not done else (0, 0)
             obs2, e_rew, done, info = self.env.step(action)
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
-            trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
+            trajectory.add(obs, self.e_rew_coeff*e_rew, self.i_rew_coeff*i_rew, exp_target, (action_prob, action), val_e, val_i)
             if self.env_is_sonic:
                 self._update_ep_stats(action, e_rew, i_rew, done, info)
             step += 1
             obs = obs2
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
-        trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, self.i_rew_coeff, self.e_rew_coeff, last_val_e, last_val_i)
+        trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, last_val_e, last_val_i)
         return trajectory
 
     def _reset_stats(self):
@@ -191,7 +193,7 @@ class BaseAgent:
         action_prob = action_probs[action_idx]
         val_e = tf.squeeze(self.val_model_e(features))
         val_i = tf.squeeze(self.val_model_i(features))
-        return tf.log(action_prob), action_idx, val_e, val_i
+        return -tf.log(action_prob), action_idx, val_e, val_i
 
     def _calc_intrinsic_reward(self, state):
         """
@@ -248,26 +250,31 @@ class BaseAgent:
 
             #create new training set, and send old one to garbage collection
             trajectory.gaes = self._normalize_gaes(trajectory.gaes)
-            dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.rews, trajectory.old_act_probs, trajectory.actions, trajectory.gaes))
+            dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.e_rews, trajectory.i_rews, trajectory.old_act_probs, trajectory.actions, trajectory.gaes))
             dataset = dataset.shuffle(100).batch(self.ppo_batch_size)
 
             #update policy and value nets
-            for (batch, (state, rew, old_act_prob, action, gae)) in enumerate(dataset.take(self.ppo_net_opt_steps)):
+            for (batch, (state, e_rew, i_rew, old_act_prob, action, gae)) in enumerate(dataset.take(self.ppo_net_opt_steps)):
                 with tf.GradientTape() as tape:
                     row_idxs = tf.range(action.shape[0], dtype=tf.int64)
                     action = tf.stack([row_idxs, tf.squeeze(action)], axis=1)
                     features = self.vis_model(state)
                     new_act_probs = self.policy_model(features)
                     new_act_prob = tf.gather_nd(new_act_probs, action)
+
                     val_e = self.val_model_e(features)
+                    val_e_loss = tf.reduce_mean(tf.square(e_rew - val_e))
                     val_i = self.val_model_i(features)
-                    val = val_e + val_i
+                    val_i_loss = tf.reduce_mean(tf.square(i_rew - val_i))
+                    v_loss = self.vf_coeff*(val_e_loss + val_i_loss)
+
                     ratio = tf.exp(new_act_prob - old_act_prob)
+                    clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.clip_value, 1.0 + self.clip_value)
                     approxkl = .5 * tf.reduce_mean(tf.square(new_act_prob - old_act_prob))
-                    min_gae = -gae * tf.clip_by_value(ratio, 1.0 - self.clip_value, 1.0 + self.clip_value)
-                    p_loss = tf.reduce_mean(tf.maximum(ratio * -gae, min_gae))
-                    v_loss = tf.reduce_mean(tf.square(rew - val))
-                    loss = p_loss + .5*self.vf_coeff*v_loss
+                    p_loss = tf.reduce_mean(tf.minimum(ratio * gae, clipped_ratio * gae))
+                    entropy = tf.reduce_mean(tf.reduce_sum(tf.exp(new_act_prob) * new_act_prob))
+
+                    loss = p_loss + v_loss + entropy
 
                 #backprop and apply grads
                 variables = self.vis_model.variables + self.policy_model.variables + self.val_model_e.variables + self.val_model_i.variables
