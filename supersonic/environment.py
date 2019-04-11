@@ -45,12 +45,13 @@ def build_sonic(lvl):
     game = utils.get_game_from_sonic_lvl(lvl)
     env = base_env(game, lvl)
     env = WarpFrame(env)
-    env = ClipReward(env, -5, 5)
-    env = DynamicNormalize(env)
+    env = ClipReward(env, -1, 1)
+    #env = DynamicNormalize(env)
+    env = BasicNormalize(env)
     env = SonicDiscretizer(env)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
-    env = AllowBacktrackingAddMaxSteps(env, max_steps=200)
+    env = AllowBacktrackingAddMaxSteps(env, max_steps=4500)
     env.SONIC = True
     return env
 
@@ -151,9 +152,7 @@ class BasicNormalize(gym.ObservationWrapper):
     
     def observation(self, obs):
         obs = obs.astype(np.float32)
-        obs -= np.mean(obs)
-        obs /= np.std(obs)
-        return obs
+        return obs / 255
 
 class DynamicNormalize(gym.Wrapper):
     """

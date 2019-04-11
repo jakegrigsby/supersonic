@@ -25,7 +25,7 @@ class NatureVision(tf.keras.Model):
     """
     The vision half of the network used in the 2015 DQN Nature paper.
     """
-    def __init__(self, reg=0.01):
+    def __init__(self, reg=0.001):
         super().__init__()
         self.conv1 = tf.keras.layers.Conv2D(32, input_shape=(84,84,4), kernel_size=(8,8), strides=4, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(reg), data_format='channels_last')
         self.conv2 = tf.keras.layers.Conv2D(64, kernel_size=(4,4), strides=2, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(reg), data_format='channels_last')
@@ -44,7 +44,7 @@ class NaturePolicy(tf.keras.Model):
     """
     Standard policy network.
     """
-    def __init__(self, nb_actions, reg=0.01):
+    def __init__(self, nb_actions, reg=0.001):
         super().__init__()
         self.dense1 = tf.keras.layers.Dense(512, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(reg))
         self.out = tf.keras.layers.Dense(nb_actions, activation='softmax', kernel_regularizer=tf.keras.regularizers.l2(reg))
@@ -59,7 +59,7 @@ class VanillaValue(tf.keras.Model):
     """
     Standard value network.
     """
-    def __init__(self, reg=0.01):
+    def __init__(self, reg=0.001):
         super().__init__()
         self.dense1 = tf.keras.layers.Dense(256, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(reg))
         self.dense2 = tf.keras.layers.Dense(64, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(reg))

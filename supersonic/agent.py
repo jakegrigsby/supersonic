@@ -19,10 +19,10 @@ class BaseAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.001, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=2., i_rew_coeff=.5, vf_coeff=.2, exp_train_prop=.5, lam=.99, exp_batch_size=32,
-                    ppo_batch_size=32, ppo_clip_value=0.1, update_mean_gae_until=10000, checkpoint_interval=10000, minkl=None, random_actions=100):
+                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=2., i_rew_coeff=0., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    ppo_batch_size=32, ppo_clip_value=0.1, update_mean_gae_until=10000, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
 
         tf.enable_eager_execution()
 
@@ -59,6 +59,7 @@ class BaseAgent:
         self.ppo_batch_size = ppo_batch_size
         self.clip_value = ppo_clip_value
         self.vf_coeff = vf_coeff
+        self.entropy_coeff = entropy_coeff
 
         self.gamma_i = gamma_i
         self.gamma_e = gamma_e
@@ -106,8 +107,7 @@ class BaseAgent:
         """
         Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
         """
-        #pick up where the last rollout left off, unless we need to reset the environment
-        if not self.most_recent_step[2]:
+        if not self.most_recent_step[2]: #if not done
             obs, e_rew, done, info = self.most_recent_step
         else:
             obs, e_rew, done, info = self.env.reset(), 0, False, {}
@@ -129,7 +129,7 @@ class BaseAgent:
             obs = obs2
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
-        trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, last_val_e, last_val_i)
+        trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, last_val_i, last_val_e)
         return trajectory
 
     def _reset_stats(self):
@@ -202,15 +202,15 @@ class BaseAgent:
         state = tf.convert_to_tensor(state, dtype=tf.float32)
         target = self.exp_target_model(state)
         pred = self.exp_train_model(state)
-        rew = np.square(np.subtract(target, pred)).mean()
+        rew = np.mean(np.square(target - pred))
         return rew, target #save targets to trajectory to avoid another call to the exp_target_model network during update_models()
 
     def _normalize_gaes(self, gaes):
         if self._gae_count < self.update_mean_gae_until:
             self._update_gae_normalization(gaes)
-        var = self._gae_m2 / ((self._gae_count-1) + 1e-3)
+        var = self._gae_m2 / ((self._gae_count-1) + 1e-5)
         std = np.sqrt(var)
-        gaes = (gaes - self._gae_running_mean) / (std + 1e-3)
+        gaes = (gaes - self._gae_running_mean) / (std + 1e-5)
         return gaes
 
     def _update_gae_normalization(self, gaes):
@@ -266,7 +266,7 @@ class BaseAgent:
                     val_e_loss = tf.reduce_mean(tf.square(e_rew - val_e))
                     val_i = self.val_model_i(features)
                     val_i_loss = tf.reduce_mean(tf.square(i_rew - val_i))
-                    v_loss = self.vf_coeff*(val_e_loss + val_i_loss)
+                    v_loss = val_e_loss + val_i_loss
 
                     ratio = tf.exp(new_act_prob - old_act_prob)
                     clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.clip_value, 1.0 + self.clip_value)
@@ -274,7 +274,7 @@ class BaseAgent:
                     p_loss = tf.reduce_mean(tf.minimum(ratio * gae, clipped_ratio * gae))
                     entropy = tf.reduce_mean(tf.reduce_sum(tf.exp(new_act_prob) * new_act_prob))
 
-                    loss = p_loss + v_loss + entropy
+                    loss = p_loss + self.vf_coeff*v_loss + self.entropy_coeff*entropy
 
                 #backprop and apply grads
                 variables = self.vis_model.variables + self.policy_model.variables + self.val_model_e.variables + self.val_model_i.variables
