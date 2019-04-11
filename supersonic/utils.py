@@ -122,20 +122,23 @@ class Trajectory:
         self.vals_e.append(last_val_e)
         self.vals_i.append(last_val_i)
         self._lists_to_ndarrays()
-        deltas = self.rews_e + gamma_e * (self.vals_e[1:] - self.vals_e[:-1])
+        deltas = self.rews_e + gamma_e * self.vals_e[1:] - self.vals_e[:-1]
         e_adv = self.discount_cumsum(deltas, gamma_e * lam)
-        deltas = self.rews_i + gamma_i * (self.vals_i[1:] - self.vals_i[:-1])
+        deltas = self.rews_i + gamma_i * self.vals_i[1:] - self.vals_i[:-1]
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
         self.gaes = np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32)
         self.i_rews = np.asarray(self.discount_cumsum(self.rews_i, gamma_i)).astype(np.float32)
         self.e_rews = np.asarray(self.discount_cumsum(self.rews_e, gamma_e)).astype(np.float32)
 
     def discount_cumsum(self, x, discount):
+        """
         r = x[::-1]
         a = [1, -discount]
         b = [1]
         y = scipy.signal.lfilter(b, a, x=x)
         return np.squeeze(y[::-1])
+        """
+        return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 
 #########################################################################################
 
