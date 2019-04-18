@@ -19,9 +19,9 @@ class PPOAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.001, ppo_lr=.01, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=1., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.1, update_mean_gae_until=10000, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
 
         tf.enable_eager_execution()
@@ -65,6 +65,7 @@ class PPOAgent:
         self.gamma_i = gamma_i
         self.gamma_e = gamma_e
         self.lam = lam
+
         self.e_rew_coeff = e_rew_coeff
         self.i_rew_coeff = i_rew_coeff
 
@@ -131,6 +132,7 @@ class PPOAgent:
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, last_val_i, last_val_e)
+        #print("\t e_returns: {} i_returns: {}".format(trajectory.rews_e[0], trajectory.rews_i[0]))
         return trajectory
 
     def _reset_stats(self):
@@ -194,7 +196,7 @@ class PPOAgent:
         action_prob = action_probs[action_idx]
         val_e = tf.squeeze(self.val_model_e(features))
         val_i = tf.squeeze(self.val_model_i(features))
-        return tf.log(action_prob), action_idx, val_e, val_i
+        return -tf.log(action_prob), action_idx, val_e, val_i
 
     def _calc_intrinsic_reward(self, state):
         """
@@ -243,12 +245,12 @@ class PPOAgent:
                 with tf.GradientTape() as tape:
                     loss = tf.losses.mean_squared_error(target, self.exp_train_model(state))
                 grads = tape.gradient(loss, self.exp_train_model.variables)
-                self.exp_optimizer.apply_gradients(zip(grads, self.exp_train_model.variables), global_step=tf.train.get_or_create_global_step())
+                self.exp_optimizer.apply_gradients(zip(grads, self.exp_train_model.variables))
 
             #create new training set, and send old one to garbage collection
             #trajectory.gaes = self._normalize_gaes(trajectory.gaes)
             trajectory.gaes = (trajectory.gaes - trajectory.gaes.mean()) / trajectory.gaes.std()
-            dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.e_rews, trajectory.i_rews, trajectory.old_act_probs, trajectory.actions, trajectory.gaes))
+            dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.rews_e, trajectory.rews_i, trajectory.old_act_probs, trajectory.actions, trajectory.gaes))
             dataset = dataset.shuffle(100).batch(self.ppo_batch_size)
 
             #update policy and value nets
@@ -277,7 +279,7 @@ class PPOAgent:
                 #backprop and apply grads
                 variables = self.vis_model.variables + self.policy_model.variables + self.val_model_e.variables + self.val_model_i.variables
                 grads = tape.gradient(loss, variables)
-                self.ppo_optimizer.apply_gradients(zip(grads, variables), global_step=tf.train.get_or_create_global_step())
+                self.ppo_optimizer.apply_gradients(zip(grads, variables))
 
                 if self.minkl and approxkl < self.minkl:
                     self._checkpoint('earlyStopped')

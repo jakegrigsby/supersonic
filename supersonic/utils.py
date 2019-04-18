@@ -127,8 +127,8 @@ class Trajectory:
         deltas = self.rews_i + gamma_i * self.vals_i[1:] - self.vals_i[:-1]
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
         self.gaes = np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32)
-        self.i_rews = np.asarray(self.discount_cumsum(self.rews_i, gamma_i)).astype(np.float32)
-        self.e_rews = np.asarray(self.discount_cumsum(self.rews_e, gamma_e)).astype(np.float32)
+        self.rews_i = np.asarray(self.discount_cumsum(self.rews_i, gamma_i)).astype(np.float32)
+        self.rews_e = np.asarray(self.discount_cumsum(self.rews_e, gamma_e)).astype(np.float32)
 
     def discount_cumsum(self, x, discount):
         """
@@ -170,3 +170,11 @@ def get_avg_lvl_map_dims():
         x_sizes[idx] = lvl_map.shape[0]
         y_sizes[idx] = lvl_map.shape[1]
     return (int(np.mean(x_sizes)), int(np.mean(y_sizes)))
+
+##################################################################################
+
+def random_actions(env, steps):
+        obs, rew, done, info = None, 0, False, {}
+        for step in range(steps):
+            obs, rew, done, info = env.step(env.action_space.sample())
+        return obs, rew, done, info

@@ -44,13 +44,13 @@ def build_sonic(lvl):
     game = utils.get_game_from_sonic_lvl(lvl)
     env = base_env(game, lvl)
     env = WarpFrame(env)
-    env = ClipReward(env, -1, 1)
+    env = ClipScaleReward(env, scale=.1, lower_bound=-1, upper_bound=1)
     env = BasicNormalize(env)
     env = SonicDiscretizer(env)
     env = MaxAndSkipEnv(env, skip=4)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
-    env = AllowBacktrackingAddMaxSteps(env, max_steps=250)
+    env = AllowBacktrackingAddMaxSteps(env, max_steps=300)
     env.SONIC = True
     return env
 
@@ -74,15 +74,16 @@ def base_env(*args, **kwargs):
         env = retro.make(*args, **kwargs)
     return env
 
-class ClipReward(gym.RewardWrapper):
+class ClipScaleReward(gym.RewardWrapper):
 
-    def __init__(self, env, lower_bound = -1, upper_bound = 1):
+    def __init__(self, env, scale=.1, lower_bound = -1, upper_bound = 1):
         super().__init__(env)
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
+        self.scale = scale
 
     def reward(self, rew):
-        return self.clip(self.lower_bound, rew, self.upper_bound)
+        return self.scale * self.clip(self.lower_bound, rew, self.upper_bound)
 
     def clip(self, min_val, value, max_val):
         return min(max(min_val, value), max_val)
@@ -275,6 +276,7 @@ class AllowBacktrackingAddMaxSteps(gym.Wrapper):
             self._max_x = max(self._max_x, self._cur_x)
             self._step_count += 1
             self._last_info = info
+        if rew<0: import pdb; pdb.set_trace()
         return obs, rew, done, info
 
 class SonicDiscretizer(gym.ActionWrapper):
