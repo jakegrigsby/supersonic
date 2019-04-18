@@ -4,3 +4,5 @@ logs/
 *.mp4
 supersonic.egg_info/
 *.egg-info/
+
+\.vscode/

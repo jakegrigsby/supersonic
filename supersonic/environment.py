@@ -58,6 +58,8 @@ def build_sonic(lvl):
 def build_boxing(lvl):
     env = base_env(lvl)
     env = WarpFrame(env)
+    env = BasicNormalize(env)
+    env = MaxAndSkipEnv(env, skip=4)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
     return env
@@ -126,7 +128,7 @@ class MaxAndSkipEnv(gym.Wrapper):
     """
     def __init__(self, env, skip=4):
         super().__init__(env)
-        self._obs_buffer = np.zeros((2,)+env.observation_space.shape[:-1], dtype=np.uint8)
+        self._obs_buffer = np.zeros((2,)+env.observation_space.shape[:-1], dtype=np.float32)
         self._skip = skip
 
     def step(self, action):
@@ -227,7 +229,6 @@ class FrameStackWrapper(gym.Wrapper):
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
         self.frames.append(obs)
-        #if np.any(np.isnan(self.stack)): import pdb; pdb.set_trace()
         return self.stack, rew, done, info
     
     @property
@@ -248,7 +249,7 @@ class AllowBacktrackingAddMaxSteps(gym.Wrapper):
     Let the agent go backwards without losing reward.
     Important for Sonic.
     """
-    def __init__(self, env, max_steps=200):
+    def __init__(self, env, max_steps=4500):
         super().__init__(env)
         self._cur_x = 0
         self._max_x = 0
