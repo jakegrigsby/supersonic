@@ -1,6 +1,9 @@
 import csv
 import os
 import json
+import operator
+import random
+import collections
 
 import numpy as np
 import scipy.signal
@@ -170,3 +173,305 @@ def get_avg_lvl_map_dims():
         x_sizes[idx] = lvl_map.shape[0]
         y_sizes[idx] = lvl_map.shape[1]
     return (int(np.mean(x_sizes)), int(np.mean(y_sizes)))
+
+#########################################################################################
+
+def random_actions(env, steps):
+        obs, rew, done, info = None, 0, False, {}
+        for step in range(steps):
+            obs, rew, done, info = env.step(env.action_space.sample())
+        return obs, rew, done, info
+
+#########################################################################################
+class SegmentTree:
+    """
+    Abstract SegmentTree data structure used to create PrioritizedMemory.
+    https://github.com/openai/baselines/blob/master/baselines/common/segment_tree.py
+    """
+    def __init__(self, capacity, operation, neutral_element):
+
+        #powers of two have no bits in common with the previous integer
+        assert capacity > 0 and capacity & (capacity - 1) == 0, "Capacity must be positive and a power of 2"
+        self._capacity = capacity
+
+        #a segment tree has (2*n)-1 total nodes
+        self._value = [neutral_element for _ in range(2 * capacity)]
+
+        self._operation = operation
+
+        self.next_index = 0
+
+    def _reduce_helper(self, start, end, node, node_start, node_end):
+        if start == node_start and end == node_end:
+            return self._value[node]
+        mid = (node_start + node_end) // 2
+        if end <= mid:
+            return self._reduce_helper(start, end, 2 * node, node_start, mid)
+        else:
+            if mid + 1 <= start:
+                return self._reduce_helper(start, end, 2 * node + 1, mid + 1, node_end)
+            else:
+                return self._operation(
+                    self._reduce_helper(start, mid, 2 * node, node_start, mid),
+                    self._reduce_helper(mid + 1, end, 2 * node + 1, mid + 1, node_end)
+                )
+
+    def reduce(self, start=0, end=None):
+        if end is None:
+            end = self._capacity
+        if end < 0:
+            end += self._capacity
+        end -= 1
+        return self._reduce_helper(start, end, 1, 0, self._capacity - 1)
+
+    def __setitem__(self, idx, val):
+        # index of the leaf
+        idx += self._capacity
+        self._value[idx] = val
+        idx //= 2
+        while idx >= 1:
+            self._value[idx] = self._operation(
+                self._value[2 * idx],
+                self._value[2 * idx + 1]
+            )
+            idx //= 2
+
+    def __getitem__(self, idx):
+        assert 0 <= idx < self._capacity
+        return self._value[self._capacity + idx]
+        
+
+class SumSegmentTree(SegmentTree):
+    """
+    SumTree allows us to sum priorities of transitions in order to assign each a probability of being sampled.
+    """
+    def __init__(self, capacity):
+        super(SumSegmentTree, self).__init__(
+            capacity=capacity,
+            operation=operator.add,
+            neutral_element=0.0
+        )
+
+    def sum(self, start=0, end=None):
+        """Returns arr[start] + ... + arr[end]"""
+        return super(SumSegmentTree, self).reduce(start, end)
+
+    def find_prefixsum_idx(self, prefixsum):
+        """Find the highest index `i` in the array such that
+            sum(arr[0] + arr[1] + ... + arr[i - i]) <= prefixsum
+        if array values are probabilities, this function
+        allows to sample indexes according to the discrete
+        probability efficiently.
+        Parameters
+        ----------
+        perfixsum: float
+            upperbound on the sum of array prefix
+        Returns
+        -------
+        idx: int
+            highest index satisfying the prefixsum constraint
+        """
+        assert 0 <= prefixsum <= self.sum() + 1e-5
+        idx = 1
+        while idx < self._capacity:  # while non-leaf
+            if self._value[2 * idx] > prefixsum:
+                idx = 2 * idx
+            else:
+                prefixsum -= self._value[2 * idx]
+                idx = 2 * idx + 1
+        return idx - self._capacity
+
+
+class MinSegmentTree(SegmentTree):
+    """
+    In PrioritizedMemory, we normalize importance weights according to the maximum weight in the buffer.
+    This is determined by the minimum transition priority. This MinTree provides an efficient way to
+    calculate that.
+    """
+    def __init__(self, capacity):
+        super(MinSegmentTree, self).__init__(
+            capacity=capacity,
+            operation=min,
+            neutral_element=float('inf')
+        )
+
+    def min(self, start=0, end=None):
+        """Returns min(arr[start], ...,  arr[end])"""
+
+        return super(MinSegmentTree, self).reduce(start, end)
+
+
+class PartitionedRingBuffer(object):
+    """
+    Buffer with a section that can be sampled from but never overwritten.
+    Used for demonstration data (DQfD). Can be used without a partition,
+    where it would function as a fixed-idxs variant of RingBuffer.
+    """
+    def __init__(self, maxlen):
+        self.maxlen = maxlen
+        self.length = 0
+        self.data = [None for _ in range(maxlen)]
+        self.permanent_idx = 0
+        self.next_idx = 0
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        if idx < 0:
+            raise KeyError()
+        return self.data[idx % self.maxlen]
+
+    def append(self, v):
+        if self.length < self.maxlen:
+            self.length += 1
+        self.data[(self.permanent_idx + self.next_idx)] = v
+        self.next_idx = (self.next_idx + 1) % (self.maxlen - self.permanent_idx)
+
+    def load(self, load_data):
+        assert len(load_data) < self.maxlen, "Must leave space to write new data."
+        for idx, data in enumerate(load_data):
+            self.length += 1
+            self.data[idx] = data
+            self.permanent_idx += 1
+            
+class PrioritizedMemory:
+
+    def __init__(self, limit, alpha=.4, start_beta=1., end_beta=1., steps_annealed=1, **kwargs):
+
+        self.ignore_episode_boundaries = True
+
+        #The capacity of the replay buffer
+        self.limit = limit
+
+        #Transitions are stored in individual RingBuffers, similar to the SequentialMemory.
+        self.actions = PartitionedRingBuffer(limit)
+        self.rewards = PartitionedRingBuffer(limit)
+        self.terminals = PartitionedRingBuffer(limit)
+        self.observations = PartitionedRingBuffer(limit)
+        self.exp_targets = PartitionedRingBuffer(limit)
+
+        assert alpha >= 0
+        #how aggressively to sample based on TD error
+        self.alpha = alpha
+        #how aggressively to compensate for that sampling. This value is typically annealed
+        #to stabilize training as the model converges (beta of 1.0 fully compensates for TD-prioritized sampling).
+        self.start_beta = start_beta
+        self.end_beta = end_beta
+        self.steps_annealed = steps_annealed
+
+        #SegmentTrees need a leaf count that is a power of 2
+        tree_capacity = 1
+        while tree_capacity < self.limit:
+            tree_capacity *= 2
+
+        #Create SegmentTrees with this capacity
+        self.sum_tree = SumSegmentTree(tree_capacity)
+        self.min_tree = MinSegmentTree(tree_capacity)
+        self.max_priority = 1.
+
+        #wrapping index for interacting with the trees
+        self.next_index = 0
+
+    def append(self, observation, action, reward, terminal, exp_target):
+        self.observations.append(observation)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.terminals.append(terminal)
+        self.exp_targets.append(exp_target)
+        #The priority of each new transition is set to the maximum
+        self.sum_tree[self.next_index] = self.max_priority ** self.alpha
+        self.min_tree[self.next_index] = self.max_priority ** self.alpha
+
+        #shift tree pointer index to keep it in sync with RingBuffers
+        self.next_index = (self.next_index + 1) % self.limit
+
+    def _sample_proportional(self, batch_size):
+        #outputs a list of idxs to sample, based on their priorities.
+        idxs = list()
+
+        for _ in range(batch_size):
+            mass = random.random() * self.sum_tree.sum(0, self.limit - 1)
+            idx = self.sum_tree.find_prefixsum_idx(mass)
+            idxs.append(idx)
+
+        return idxs
+
+    def sample(self, batch_size, beta=1.):
+        idxs = self._sample_proportional(batch_size)
+
+        #importance sampling weights are a stability measure
+        importance_weights = list()
+        exp_targets = list()
+
+        #The lowest-priority experience defines the maximum importance sampling weight
+        prob_min = self.min_tree.min() / self.sum_tree.sum()
+        max_importance_weight = (prob_min * self.nb_entries)  ** (-beta)
+        obs_t, act_t, rews, obs_t1, dones = [], [], [], [], []
+
+        experiences = list()
+        for idx in idxs:
+            terminal0 = self.terminals[idx]
+            while terminal0:
+                idx = np.random.choice(np.arange(0, len(self.actions)))
+                terminal0 = self.terminals[idx]
+
+            #probability of sampling transition is the priority of the transition over the sum of all priorities
+            prob_sample = self.sum_tree[idx] / self.sum_tree.sum()
+            importance_weight = (prob_sample * self.nb_entries) ** (-beta)
+            #normalize weights according to the maximum value
+            importance_weights.append(importance_weight/max_importance_weight)
+
+            # Code for assembling stacks of observations and dealing with episode boundaries is borrowed from
+            # SequentialMemory
+            state0 = np.squeeze(self.observations[idx])
+            action = self.actions[idx]
+            reward = self.rewards[idx]
+            terminal1 = self.terminals[idx+1]
+            state1 = np.squeeze(self.observations[idx+1])
+
+            exp_targets.append(self.exp_targets[idx])
+
+            assert len(state1) == len(state0)
+            experiences.append(Experience(state0=state0, action=action, reward=reward,
+                                          state1=state1, terminal1=terminal1))
+        assert len(experiences) == batch_size
+
+        # Return a tuple whre the first batch_size items are the transititions
+        # while -3 is the importance weights of those transitions and -2 is
+        # the idxs of the buffer (so that we can update priorities later). -1
+        # is the exploration targets, which we save so they do not have to be 
+        # recalculated.
+        return tuple(list(experiences)+ [importance_weights, idxs, exp_targets])
+
+    def update_priorities(self, idxs, priorities):
+        #adjust priorities based on new TD error
+        for i, idx in enumerate(idxs):
+            assert 0 <= idx < self.limit
+            priority = priorities[i] ** self.alpha
+            self.sum_tree[idx] = priority
+            self.min_tree[idx] = priority
+            self.max_priority = max(self.max_priority, priority)
+
+    def calculate_beta(self, current_step):
+        a = float(self.end_beta - self.start_beta) / float(self.steps_annealed)
+        b = float(self.start_beta)
+        current_beta = min(self.end_beta, a * float(current_step) + b)
+        return current_beta
+
+    def get_config(self):
+        config = super(PrioritizedMemory, self).get_config()
+        config['alpha'] = self.alpha
+        config['start_beta'] = self.start_beta
+        config['end_beta'] = self.end_beta
+        config['beta_steps_annealed'] = self.steps_annealed
+
+    @property
+    def nb_entries(self):
+        """Return number of observations
+        # Returns
+            Number of observations
+        """
+        return len(self.observations)
+    
+Experience = collections.namedtuple('Experience', 'state0, action, reward, state1, terminal1')
