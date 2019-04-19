@@ -76,7 +76,7 @@ def base_env(*args, **kwargs):
 
 class ClipScaleReward(gym.RewardWrapper):
 
-    def __init__(self, env, scale=.1, lower_bound = -1, upper_bound = 1):
+    def __init__(self, env, scale=1., lower_bound = -1, upper_bound = 1):
         super().__init__(env)
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound

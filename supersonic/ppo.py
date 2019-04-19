@@ -19,9 +19,9 @@ class PPOAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.001, ppo_lr=.01, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=1., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    rollout_length=128, ppo_net_opt_steps=12, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.1, update_mean_gae_until=10000, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
 
         tf.enable_eager_execution()
@@ -67,7 +67,8 @@ class PPOAgent:
         self.lam = lam
 
         self.e_rew_coeff = e_rew_coeff
-        self.i_rew_coeff = i_rew_coeff
+        self.max_i_rew_coeff = i_rew_coeff
+        self.i_rew_coeff = 0
 
         self.rollout_length = rollout_length
 
@@ -132,7 +133,7 @@ class PPOAgent:
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, last_val_i, last_val_e)
-        #print("\t e_returns: {} i_returns: {}".format(trajectory.rews_e[0], trajectory.rews_i[0]))
+        self.i_rew_coeff = min(self.max_i_rew_coeff, self.i_rew_coeff + .05)
         return trajectory
 
     def _reset_stats(self):
@@ -205,7 +206,7 @@ class PPOAgent:
         state = tf.convert_to_tensor(state, dtype=tf.float32)
         target = self.exp_target_model(state)
         pred = self.exp_train_model(state)
-        rew = np.mean(np.square(target - pred))
+        rew = np.linalg.norm(target-pred)
         return rew, target #save targets to trajectory to avoid another call to the exp_target_model network during update_models()
 
     def _normalize_gaes(self, gaes):
@@ -243,7 +244,7 @@ class PPOAgent:
             #update exploration net
             for (batch, (state, target)) in enumerate(dataset.take(self.exp_net_opt_steps)):
                 with tf.GradientTape() as tape:
-                    loss = tf.losses.mean_squared_error(target, self.exp_train_model(state))
+                    loss = tf.linalg.norm(target-self.exp_train_model(state))
                 grads = tape.gradient(loss, self.exp_train_model.variables)
                 self.exp_optimizer.apply_gradients(zip(grads, self.exp_train_model.variables))
 
@@ -272,7 +273,7 @@ class PPOAgent:
                     clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.clip_value, 1.0 + self.clip_value)
                     approxkl = .5 * tf.reduce_mean(tf.square(new_act_prob - old_act_prob))
                     p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, clipped_ratio * gae))
-                    entropy = tf.reduce_mean(tf.reduce_sum(tf.exp(new_act_prob) * new_act_prob))
+                    entropy = -tf.reduce_mean(tf.reduce_sum(tf.exp(new_act_prob) * new_act_prob))
 
                     loss = p_loss + self.vf_coeff*v_loss + self.entropy_coeff*entropy
 
