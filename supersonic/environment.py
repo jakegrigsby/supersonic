@@ -64,6 +64,16 @@ def build_boxing(lvl):
     env = FrameStackWrapper(env)
     return env
 
+@env_builder('MontezumaRevenge-v0')
+def build_boxing(lvl):
+    env = base_env(lvl)
+    env = WarpFrame(env)
+    env = BasicNormalize(env)
+    env = MaxAndSkipEnv(env, skip=4)
+    env = StickyActionEnv(env)
+    env = FrameStackWrapper(env)
+    return env
+
 def base_env(*args, **kwargs):
     """
     auto-switching between gym and gym-retro
