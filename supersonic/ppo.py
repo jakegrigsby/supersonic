@@ -19,7 +19,7 @@ class PPOAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.01, ppo_lr=.0005, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.01, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
                     rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.1, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
@@ -68,7 +68,7 @@ class PPOAgent:
 
         self.e_rew_coeff = e_rew_coeff
         self.max_i_rew_coeff = i_rew_coeff
-        self.i_rew_coeff = 0
+        self.i_rew_coeff = i_rew_coeff
 
         self.rollout_length = rollout_length
 
@@ -260,7 +260,6 @@ class PPOAgent:
 
                     ratio = tf.exp(new_act_prob - old_act_prob)
                     clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.clip_value, 1.0 + self.clip_value)
-                    approxkl = .5 * tf.reduce_mean(tf.square(new_act_prob - old_act_prob))
                     p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, clipped_ratio * gae))
                     entropy = -tf.reduce_mean(tf.reduce_sum(tf.exp(new_act_prob) * new_act_prob))
 
@@ -271,6 +270,7 @@ class PPOAgent:
                 grads = tape.gradient(loss, variables)
                 self.ppo_optimizer.apply_gradients(zip(grads, variables))
 
+                approxkl = .5 * tf.reduce_mean(tf.square(new_act_prob - old_act_prob))
                 if self.minkl and approxkl < self.minkl:
                     self._checkpoint('earlyStopped')
                     self.stop = True
