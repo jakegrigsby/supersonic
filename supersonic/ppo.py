@@ -19,9 +19,9 @@ class PPOAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.001, ppo_lr=.00005, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=None, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=12, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    rollout_length=128, ppo_net_opt_steps=16, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.1, update_mean_gae_until=10000, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
 
         tf.enable_eager_execution()
@@ -84,14 +84,15 @@ class PPOAgent:
 
     def train(self, rollouts, device='/cpu:0', render=False):
         past_trajectory = None
+        progbar = tf.keras.utils.Progbar(rollouts)
         for rollout in range(rollouts):
-            print("Rollout #{}".format(rollout))
             trajectory = self._rollout(self.rollout_length, past_trajectory, render=render)
             self._update_models(trajectory, device)
             if self.stop: exit() #if early stopping is activated
             past_trajectory = deepcopy(trajectory)
             if self.checkpoint_interval and rollout % self.checkpoint_interval == 0:
                 self._checkpoint(rollout)
+            progbar.update(rollout)
 
     def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
         cum_rew = 0
