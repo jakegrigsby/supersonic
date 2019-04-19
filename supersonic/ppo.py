@@ -19,10 +19,10 @@ class PPOAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.001, ppo_lr=.00001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
-                    exp_target_model='NatureVision', exp_train_model='NatureVision', exp_net_opt_steps=8, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_net_opt_steps=12, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
-                    ppo_batch_size=32, ppo_clip_value=0.1, update_mean_gae_until=10000, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
+    def __init__(self, env_id, exp_lr=.01, ppo_lr=.0005, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+                    exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
+                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    ppo_batch_size=32, ppo_clip_value=0.1, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
 
         tf.enable_eager_execution()
 
@@ -53,10 +53,10 @@ class PPOAgent:
         self.exp_target_model = models.get_model(exp_target_model)()
         self.exp_train_model = models.get_model(exp_train_model)()
 
-        self.exp_net_opt_steps = exp_net_opt_steps if exp_net_opt_steps else max(int((rollout_length * exp_train_prop)/exp_batch_size), 1)
+        self.exp_epochs = exp_epochs
         self.exp_train_prop = exp_train_prop
         self.exp_batch_size = exp_batch_size
-        self.ppo_net_opt_steps = ppo_net_opt_steps if ppo_net_opt_steps else max(int(rollout_length / ppo_batch_size), 1)
+        self.ppo_epochs = ppo_epochs
         self.ppo_batch_size = ppo_batch_size
         self.clip_value = ppo_clip_value
         self.vf_coeff = vf_coeff
@@ -71,11 +71,6 @@ class PPOAgent:
         self.i_rew_coeff = 0
 
         self.rollout_length = rollout_length
-
-        self.update_mean_gae_until = update_mean_gae_until
-        self._gae_count = 0
-        self._gae_running_mean = np.zeros((rollout_length,1), dtype=np.float32)
-        self._gae_m2 = np.zeros_like(self._gae_running_mean)
 
         self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
         self.logger = logger.Logger(self.log_dir)
@@ -214,20 +209,8 @@ class PPOAgent:
         rew = np.linalg.norm(target-pred)
         return rew, target #save targets to trajectory to avoid another call to the exp_target_model network during update_models()
 
-    def _normalize_gaes(self, gaes):
-        if self._gae_count < self.update_mean_gae_until:
-            self._update_gae_normalization(gaes)
-        var = self._gae_m2 / ((self._gae_count-1) + 1e-5)
-        std = np.sqrt(var)
-        gaes = (gaes - self._gae_running_mean) / (std + 1e-5)
-        return gaes
-
-    def _update_gae_normalization(self, gaes):
-        self._gae_count += self.rollout_length
-        delta = gaes - self._gae_running_mean
-        self._gae_running_mean += delta / self._gae_count
-        delta2 = gaes - self._gae_running_mean
-        self._gae_m2 += delta * delta2
+    def _normalize(self, ndarray):
+        return (ndarray - ndarray.mean()) / (ndarray.std() + 1e-5)
 
     def _checkpoint(self, rollout_num):
         save_path = 'weights/{}/checkpoint_{}'.format(os.path.basename(self.log_dir), rollout_num)
@@ -244,23 +227,24 @@ class PPOAgent:
             exp_train_samples = int(self.rollout_length * self.exp_train_prop)
             idxs = np.random.choice(trajectory.states.shape[0], exp_train_samples, replace=False)
             dataset = tf.data.Dataset.from_tensor_slices((np.take(trajectory.states, idxs, axis=0), np.take(trajectory.exp_targets, idxs, axis=0)))
-            dataset = dataset.shuffle(100).batch(self.exp_batch_size)
+            dataset = dataset.shuffle(100).batch(self.exp_batch_size).repeat(self.exp_epochs)
 
             #update exploration net
-            for (batch, (state, target)) in enumerate(dataset.take(self.exp_net_opt_steps)):
+            for (batch, (state, target)) in enumerate(dataset):
                 with tf.GradientTape() as tape:
                     loss = tf.linalg.norm(target-self.exp_train_model(state))
                 grads = tape.gradient(loss, self.exp_train_model.variables)
                 self.exp_optimizer.apply_gradients(zip(grads, self.exp_train_model.variables))
 
             #create new training set, and send old one to garbage collection
-            #trajectory.gaes = self._normalize_gaes(trajectory.gaes)
-            trajectory.gaes = (trajectory.gaes - trajectory.gaes.mean()) / trajectory.gaes.std()
+            trajectory.gaes = self._normalize(trajectory.gaes)
+            trajectory.rews_e = self._normalize(trajectory.rews_e)
+            trajectory.rews_i = self._normalize(trajectory.rews_i)
             dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.rews_e, trajectory.rews_i, trajectory.old_act_probs, trajectory.actions, trajectory.gaes))
-            dataset = dataset.shuffle(100).batch(self.ppo_batch_size)
+            dataset = dataset.shuffle(100).batch(self.ppo_batch_size).repeat(self.ppo_epochs)
 
             #update policy and value nets
-            for (batch, (state, e_rew, i_rew, old_act_prob, action, gae)) in enumerate(dataset.take(self.ppo_net_opt_steps)):
+            for (batch, (state, e_rew, i_rew, old_act_prob, action, gae)) in enumerate(dataset):
                 with tf.GradientTape() as tape:
                     row_idxs = tf.range(action.shape[0], dtype=tf.int64)
                     action = tf.stack([row_idxs, tf.squeeze(action)], axis=1)
