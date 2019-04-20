@@ -250,7 +250,8 @@ class PPOAgent:
                     action = tf.stack([row_idxs, tf.squeeze(action)], axis=1)
                     features = self.vis_model(state)
                     new_act_probs = self.policy_model(features)
-                    new_act_prob = tf.gather_nd(new_act_probs, action)
+                    new_act_prob = -tf.log(tf.gather_nd(new_act_probs, action))
+                    old_act_prob = tf.squeeze(old_act_prob)
 
                     val_e = self.val_model_e(features)
                     val_e_loss = tf.reduce_mean(tf.square(e_rew - val_e))
