@@ -44,7 +44,7 @@ def build_sonic(lvl):
     game = utils.get_game_from_sonic_lvl(lvl)
     env = base_env(game, lvl)
     env = WarpFrame(env)
-    env = ClipScaleReward(env, scale=1., lower_bound=-1, upper_bound=1)
+    env = ClipScaleReward(env, scale=.1, lower_bound=-1, upper_bound=1)
     env = BasicNormalize(env)
     env = SonicDiscretizer(env)
     env = MaxAndSkipEnv(env, skip=4)
@@ -86,7 +86,7 @@ def base_env(*args, **kwargs):
 
 class ClipScaleReward(gym.RewardWrapper):
 
-    def __init__(self, env, scale=1., lower_bound = -1, upper_bound = 1):
+    def __init__(self, env, scale=.1, lower_bound = -1, upper_bound = 1):
         super().__init__(env)
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound

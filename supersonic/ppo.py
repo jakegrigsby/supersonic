@@ -17,12 +17,12 @@ def ppo_agent(env_id, hyp_dict, log_dir):
 
 class PPOAgent:
     """
-    Basic version of Proximal Policy Optimization (Clip) with exploration by R3ndom Network Distillation.
+    Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.01, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
                     rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
-                    ppo_batch_size=32, ppo_clip_value=0.2, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
+                    ppo_batch_size=32, ppo_clip_value=0.1, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
 
         tf.enable_eager_execution()
 
@@ -65,17 +65,15 @@ class PPOAgent:
         self.gamma_i = gamma_i
         self.gamma_e = gamma_e
         self.lam = lam
-
         self.e_rew_coeff = e_rew_coeff
         self.i_rew_coeff = i_rew_coeff
-
         self.rollout_length = rollout_length
 
         self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
         self.logger = logger.Logger(self.log_dir)
         self._log_episode_num = 0
         self._reset_stats()
-
+    
     def train(self, rollouts, device='/cpu:0', render=False):
         past_trajectory = None
         progbar = tf.keras.utils.Progbar(rollouts)
@@ -105,7 +103,7 @@ class PPOAgent:
                 cum_rew += rew
                 step += 1
         return cum_rew
-
+    
     def _rollout(self, steps, past_trajectory=None, render=False):
         """
         Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
@@ -119,6 +117,7 @@ class PPOAgent:
         while step < steps:
             if done: 
                 obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
+                #linearly increase maximum env runtime. Found this to speed up early training
                 if self.env_is_sonic: self.env.max_steps = min(self.env.max_steps + 50, 4500)
             action_prob, action, val_e, val_i = self._choose_action_get_value(obs)
             val_e, val_i = (val_e, val_i) if not done else (0, 0)
@@ -205,11 +204,8 @@ class PPOAgent:
         state = tf.convert_to_tensor(state, dtype=tf.float32)
         target = self.exp_target_model(state)
         pred = self.exp_train_model(state)
-        rew = np.linalg.norm(target-pred)
+        rew = np.mean(np.square(target - pred))
         return rew, target #save targets to trajectory to avoid another call to the exp_target_model network during update_models()
-
-    def _normalize(self, ndarray):
-        return (ndarray - ndarray.mean()) / (ndarray.std() + 1e-4)
 
     def _checkpoint(self, rollout_num):
         save_path = 'weights/{}/checkpoint_{}'.format(os.path.basename(self.log_dir), rollout_num)
@@ -231,17 +227,13 @@ class PPOAgent:
             #update exploration net
             for (batch, (state, target)) in enumerate(dataset):
                 with tf.GradientTape() as tape:
-                    loss = tf.linalg.norm(target-self.exp_train_model(state))
+                    loss = tf.reduce_mean(tf.square(target - self.exp_train_model(state)))
                 grads = tape.gradient(loss, self.exp_train_model.variables)
                 self.exp_optimizer.apply_gradients(zip(grads, self.exp_train_model.variables))
 
             #create new training set, and send old one to garbage collection
-            trajectory.gaes = self._normalize(trajectory.gaes)
-            trajectory.rews_e = self._normalize(trajectory.rews_e)
-            trajectory.rews_i = self._normalize(trajectory.rews_i)
             dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.rews_e, trajectory.rews_i, trajectory.old_act_probs, trajectory.actions, trajectory.gaes))
             dataset = dataset.shuffle(100).batch(self.ppo_batch_size).repeat(self.ppo_epochs)
-
             #update policy and value nets
             for (batch, (state, e_rew, i_rew, old_act_prob, action, gae)) in enumerate(dataset):
                 with tf.GradientTape() as tape:
