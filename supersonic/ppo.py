@@ -19,7 +19,7 @@ class PPOAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by R3ndom Network Distillation.
     """
-    def __init__(self, env_id, exp_lr=.01, ppo_lr=.001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
+    def __init__(self, env_id, exp_lr=.01, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
                     rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.2, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
