@@ -67,7 +67,6 @@ class PPOAgent:
         self.lam = lam
 
         self.e_rew_coeff = e_rew_coeff
-        self.max_i_rew_coeff = i_rew_coeff
         self.i_rew_coeff = i_rew_coeff
 
         self.rollout_length = rollout_length
@@ -134,7 +133,6 @@ class PPOAgent:
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, last_val_i, last_val_e)
-        self.i_rew_coeff = min(self.max_i_rew_coeff, self.i_rew_coeff + .05)
         return trajectory
 
     def _reset_stats(self):
@@ -198,7 +196,7 @@ class PPOAgent:
         action_prob = action_probs[action_idx]
         val_e = tf.squeeze(self.val_model_e(features))
         val_i = tf.squeeze(self.val_model_i(features))
-        return -tf.log(action_prob), action_idx, val_e, val_i
+        return tf.log(action_prob), action_idx, val_e, val_i
 
     def _calc_intrinsic_reward(self, state):
         """
@@ -211,7 +209,7 @@ class PPOAgent:
         return rew, target #save targets to trajectory to avoid another call to the exp_target_model network during update_models()
 
     def _normalize(self, ndarray):
-        return (ndarray - ndarray.mean()) / (ndarray.std() + 1e-5)
+        return (ndarray - ndarray.mean()) / (ndarray.std() + 1e-4)
 
     def _checkpoint(self, rollout_num):
         save_path = 'weights/{}/checkpoint_{}'.format(os.path.basename(self.log_dir), rollout_num)
@@ -251,9 +249,9 @@ class PPOAgent:
                     action = tf.stack([row_idxs, tf.squeeze(action)], axis=1)
                     features = self.vis_model(state)
                     new_act_probs = self.policy_model(features)
-                    new_act_prob = -tf.log(tf.gather_nd(new_act_probs, action))
+                    new_act_prob = tf.log(tf.gather_nd(new_act_probs, action))
                     old_act_prob = tf.squeeze(old_act_prob)
-                    gae = -tf.squeeze(gae)
+                    gae = tf.squeeze(gae)
 
                     val_e = self.val_model_e(features)
                     val_e_loss = tf.reduce_mean(tf.square(e_rew - val_e))
@@ -262,9 +260,9 @@ class PPOAgent:
                     v_loss = val_e_loss + val_i_loss
 
                     ratio = tf.exp(new_act_prob - old_act_prob)
-                    clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.clip_value, 1.0 + self.clip_value)
-                    p_loss = -tf.reduce_mean(tf.maximum(ratio * gae, clipped_ratio * gae))
-                    entropy = -tf.reduce_sum(tf.exp(new_act_prob) * new_act_prob)
+                    min_gae = tf.where(gae > 0, (1+self.clip_value)*gae, (1-self.clip_value)*gae)
+                    p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
+                    entropy = tf.reduce_mean(-new_act_prob)
 
                     loss = p_loss + self.vf_coeff*v_loss - self.entropy_coeff*entropy
 
@@ -273,7 +271,7 @@ class PPOAgent:
                 grads = tape.gradient(loss, variables)
                 self.ppo_optimizer.apply_gradients(zip(grads, variables))
 
-                approxkl = .5 * tf.reduce_mean(tf.square(new_act_prob - old_act_prob))
+                approxkl = tf.reduce_mean(old_act_prob - new_act_prob)
                 if self.minkl and approxkl < self.minkl:
                     self._checkpoint('earlyStopped')
                     self.stop = True
