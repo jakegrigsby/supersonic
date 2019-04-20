@@ -87,7 +87,7 @@ class PPOAgent:
             past_trajectory = deepcopy(trajectory)
             if self.checkpoint_interval and rollout % self.checkpoint_interval == 0:
                 self._checkpoint(rollout)
-            progbar.update(rollout)
+            progbar.update(rollout+1)
 
     def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
         try:
@@ -252,7 +252,7 @@ class PPOAgent:
                     new_act_probs = self.policy_model(features)
                     new_act_prob = -tf.log(tf.gather_nd(new_act_probs, action))
                     old_act_prob = tf.squeeze(old_act_prob)
-                    gae = tf.squeeze(gae)
+                    gae = -tf.squeeze(gae)
 
                     val_e = self.val_model_e(features)
                     val_e_loss = tf.reduce_mean(tf.square(e_rew - val_e))
@@ -262,10 +262,10 @@ class PPOAgent:
 
                     ratio = tf.exp(new_act_prob - old_act_prob)
                     clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.clip_value, 1.0 + self.clip_value)
-                    p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, clipped_ratio * gae))
-                    entropy = -tf.reduce_mean(tf.reduce_sum(tf.exp(new_act_prob) * new_act_prob))
+                    p_loss = tf.reduce_mean(tf.maximum(ratio * gae, clipped_ratio * gae))
+                    entropy = -tf.reduce_sum(tf.exp(new_act_prob) * new_act_prob)
 
-                    loss = p_loss + self.vf_coeff*v_loss + self.entropy_coeff*entropy
+                    loss = p_loss + self.vf_coeff*v_loss - self.entropy_coeff*entropy
 
                 #backprop and apply grads
                 variables = self.vis_model.variables + self.policy_model.variables + self.val_model_e.variables + self.val_model_i.variables
