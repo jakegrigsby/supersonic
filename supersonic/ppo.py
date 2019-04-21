@@ -116,7 +116,7 @@ class PPOAgent:
             #consolidate each nodes trajectories into one dataset we can train on
             super_trajectory = self._gather_trajectories(trajectory)
             if self.rank == 0:
-                self._update_models(trajectory, device)
+                self._update_models(super_trajectory, device)
             #scatter new weights to other nodes
             self.weights = self.comm.bcast(self.weights, root=0)
             if self.stop: exit() #if early stopping is activated
