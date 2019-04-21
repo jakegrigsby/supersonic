@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import tensorflow as tf
+from mpi4py import MPI
 
 from supersonic import environment, utils, models, logger
 
@@ -21,10 +22,13 @@ class PPOAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.2, exp_train_prop=.25, lam=.95, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.1, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
 
         tf.enable_eager_execution()
+        self.comm = MPI.COMM_WORLD
+        self.rank = self.comm.Get_rank()
+        self.size = self.comm.Get_size()
 
         self.env = environment.auto_env(env_id)
         #take random actions to let environment normalize observations before training or testing begins
@@ -69,17 +73,52 @@ class PPOAgent:
         self.i_rew_coeff = i_rew_coeff
         self.rollout_length = rollout_length
 
-        self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
-        self.logger = logger.Logger(self.log_dir)
-        self._log_episode_num = 0
-        self._reset_stats()
+        if self.rank == 0:
+            self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
+            self.logger = logger.Logger(self.log_dir)
+            self._log_episode_num = 0
+            self._reset_stats()
     
+    def _gather_arrays(self, array, is_frame_stack=False):
+        recv_buff = None
+        if self.rank == 0:
+            if is_frame_stack:
+                recv_buff = np.empty([self.size, self.rollout_length, array.shape[1], array.shape[2], array.shape[3]], dtype='f')
+            else:
+                if array.ndim == 1:
+                    array = np.expand_dims(array, axis=-1)
+                recv_buff = np.empty([self.size, self.rollout_length, 1], dtype='f')
+        self.comm.Gather(array, recv_buff, root=0)
+        try:
+            return recv_buff.flatten()
+        except:
+            return None
+    
+    def _gather_objects(self, obj):
+        list_of_objs = self.comm.gather(obj, root=0)
+        return list_of_objs
+    
+    def _gather_trajectories(self, trajectory):
+        super_trajectory = utils.Trajectory(self.rollout_length)
+        super_trajectory.states = self._gather_arrays(trajectory.states, is_frame_stack=True)
+        super_trajectory.rews_i = self._gather_arrays(trajectory.rews_i)
+        super_trajectory.rews_e = self._gather_arrays(trajectory.rews_e)
+        super_trajectory.old_act_probs = self._gather_arrays(trajectory.old_act_probs)
+        super_trajectory.exp_targets = self._gather_arrays(trajectory.exp_targets)
+        super_trajectory.gaes = self._gather_arrays(trajectory.gaes)
+        return super_trajectory
+
     def train(self, rollouts, device='/cpu:0', render=False):
         past_trajectory = None
         progbar = tf.keras.utils.Progbar(rollouts)
         for rollout in range(rollouts):
             trajectory = self._rollout(self.rollout_length, past_trajectory, render=render)
-            self._update_models(trajectory, device)
+            #consolidate each nodes trajectories into one dataset we can train on
+            super_trajectory = self._gather_trajectories(trajectory)
+            if self.rank == 0:
+                self._update_models(trajectory, device)
+            #scatter new weights to other nodes
+            self.weights = self.comm.bcast(self.weights, root=0)
             if self.stop: exit() #if early stopping is activated
             past_trajectory = deepcopy(trajectory)
             if self.checkpoint_interval and rollout % self.checkpoint_interval == 0:
@@ -125,7 +164,7 @@ class PPOAgent:
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
             trajectory.add(obs, self.e_rew_coeff*e_rew, self.i_rew_coeff*i_rew, exp_target, (action_prob, action), val_e, val_i)
-            if self.env_is_sonic:
+            if self.env_is_sonic and self.rank == 0:
                 self._update_ep_stats(action, e_rew, i_rew, done, info)
             step += 1
             obs = obs2
