@@ -12,4 +12,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args.render)
     sonic = ppo.PPOAgent(args.lvl, log_dir=args.logdir)
-    sonic.train(30000, device='/cpu:0', render=args.render)
+    sonic.train(30000, render=args.render)
