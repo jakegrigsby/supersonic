@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import tensorflow as tf
+from mpi4py import MPI
 
 from supersonic import environment, utils, models, logger
 
@@ -21,10 +22,13 @@ class PPOAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.2, exp_train_prop=.25, lam=.95, exp_batch_size=32,
                     ppo_batch_size=32, ppo_clip_value=0.1, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
 
         tf.enable_eager_execution()
+        self.comm = MPI.COMM_WORLD
+        self.rank = self.comm.Get_rank()
+        self.size = self.comm.Get_size()
 
         self.env = environment.auto_env(env_id)
         #take random actions to let environment normalize observations before training or testing begins
@@ -69,22 +73,57 @@ class PPOAgent:
         self.i_rew_coeff = i_rew_coeff
         self.rollout_length = rollout_length
 
-        self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
-        self.logger = logger.Logger(self.log_dir)
-        self._log_episode_num = 0
-        self._reset_stats()
+        if self.rank == 0:
+            self.log_dir = os.path.join('logs',log_dir) if log_dir else 'logs/'
+            self.logger = logger.Logger(self.log_dir)
+            self._log_episode_num = 0
+            self._reset_stats()
     
+    def _gather_array(self, array, dtype=np.float32):
+        recv_buff = None
+        if self.rank == 0:
+            recv_buff = np.empty([self.size] + list(array.shape), dtype=dtype)
+        self.comm.Gather(array, recv_buff, root=0)
+        return recv_buff
+    
+    def _reshape_trajectory(self, trajectory):
+        trajectory.states = np.reshape(trajectory.states, (-1,) + trajectory.states.shape[2:])
+        trajectory.rews_e = np.expand_dims(trajectory.rews_e.flatten(), -1)
+        trajectory.rews_i = np.expand_dims(trajectory.rews_i.flatten(), -1)
+        trajectory.gaes = np.squeeze(trajectory.gaes.flatten())
+        trajectory.old_act_probs = trajectory.gaes.flatten()
+        trajectory.exp_targets = np.reshape(trajectory.exp_targets, (-1, trajectory.exp_targets.shape[-1]))
+        trajectory.actions = trajectory.actions.flatten()
+        return trajectory
+
     def train(self, rollouts, device='/cpu:0', render=False):
         past_trajectory = None
-        progbar = tf.keras.utils.Progbar(rollouts)
+        if self.rank == 0: progbar = tf.keras.utils.Progbar(rollouts)
         for rollout in range(rollouts):
             trajectory = self._rollout(self.rollout_length, past_trajectory, render=render)
-            self._update_models(trajectory, device)
+            self.comm.barrier()
+            #consolidate each nodes trajectories into one dataset we can train on
+            super_trajectory = utils.Trajectory(self.rollout_length)
+            super_trajectory.rews_e = self._gather_array(trajectory.rews_e)
+            super_trajectory.rews_i = self._gather_array(trajectory.rews_i)
+            super_trajectory.gaes = self._gather_array(trajectory.gaes)
+            super_trajectory.old_act_probs = self._gather_array(trajectory.old_act_probs)
+            super_trajectory.exp_targets = self._gather_array(trajectory.exp_targets)
+            super_trajectory.actions = self._gather_array(trajectory.actions, dtype=np.int64)
+            super_trajectory.states = self._gather_array(trajectory.states)
+            self.comm.barrier()
+            if self.rank == 0:
+                super_trajectory = self._reshape_trajectory(super_trajectory)
+                self._update_models(super_trajectory, device)
+            #scatter new weights to other nodes
+            self.comm.barrier()
+            self.weights = self.comm.bcast(self.weights, root=0)
             if self.stop: exit() #if early stopping is activated
             past_trajectory = deepcopy(trajectory)
-            if self.checkpoint_interval and rollout % self.checkpoint_interval == 0:
+            if self.rank == 0 and self.checkpoint_interval and rollout % self.checkpoint_interval == 0:
                 self._checkpoint(rollout)
-            progbar.update(rollout+1)
+            if self.rank == 0: pass #progbar.update(rollout+1)
+            self.comm.barrier()
         self.save_weights('final')
 
     def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
@@ -125,7 +164,7 @@ class PPOAgent:
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
             trajectory.add(obs, self.e_rew_coeff*e_rew, self.i_rew_coeff*i_rew, exp_target, (action_prob, action), val_e, val_i)
-            if self.env_is_sonic:
+            if self.env_is_sonic and self.rank == 0:
                 self._update_ep_stats(action, e_rew, i_rew, done, info)
             step += 1
             obs = obs2
@@ -243,7 +282,6 @@ class PPOAgent:
                     new_act_probs = self.policy_model(features)
                     new_act_prob = tf.log(tf.gather_nd(new_act_probs, action))
                     old_act_prob = tf.squeeze(old_act_prob)
-                    gae = tf.squeeze(gae)
 
                     val_e = self.val_model_e(features)
                     val_e_loss = tf.reduce_mean(tf.square(e_rew - val_e))
@@ -288,18 +326,18 @@ class PPOAgent:
 
     @property
     def weights(self):
-        return [self.vis_model.weights,
-                self.policy_model.weights,
-                self.val_model_e.weights,
-                self.val_model_i.weights,
-                self.exp_target_model.weights,
-                self.exp_train_model.weights]
+        return [self.vis_model.get_weights(),
+                self.policy_model.get_weights(),
+                self.val_model_e.get_weights(),
+                self.val_model_i.get_weights(),
+                self.exp_target_model.get_weights(),
+                self.exp_train_model.get_weights()]
 
     @weights.setter
     def weights(self, new_weights):
-        self.vis_model.weights = new_weights[0]
-        self.policy_model.weights = new_weights[1]
-        self.val_model_e.weights = new_weights[2]
-        self.val_model_i.weights = new_weights[3]
-        self.exp_target_model.weights = new_weights[4]
-        self.exp_target_model.weights = new_weights[5]
+        self.vis_model.set_weights(new_weights[0])
+        self.policy_model.set_weights(new_weights[1])
+        self.val_model_e.set_weights(new_weights[2])
+        self.val_model_i.set_weights(new_weights[3])
+        self.exp_target_model.set_weights(new_weights[4])
+        self.exp_train_model.set_weights(new_weights[5])
