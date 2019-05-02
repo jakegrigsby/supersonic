@@ -100,7 +100,7 @@ class Trajectory:
         self.states.append(np.squeeze(state))
         self.rews_e.append(rew_e)
         self.rews_i.append(rew_i)
-        self.old_act_probs.append(np.expand_dims(act_prob_tuple[0], axis=0))
+        self.old_act_probs.append(act_prob_tuple[0])
         self.actions.append(act_prob_tuple[1])
         self.vals_e.append(val_e)
         self.vals_i.append(val_i)

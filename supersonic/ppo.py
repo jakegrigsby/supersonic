@@ -91,7 +91,7 @@ class PPOAgent:
         trajectory.rews_e = np.expand_dims(trajectory.rews_e.flatten(), -1)
         trajectory.rews_i = np.expand_dims(trajectory.rews_i.flatten(), -1)
         trajectory.gaes = np.squeeze(trajectory.gaes.flatten())
-        trajectory.old_act_probs = trajectory.gaes.flatten()
+        trajectory.old_act_probs = trajectory.old_act_probs.flatten()
         trajectory.exp_targets = np.reshape(trajectory.exp_targets, (-1, trajectory.exp_targets.shape[-1]))
         trajectory.actions = trajectory.actions.flatten()
         return trajectory
