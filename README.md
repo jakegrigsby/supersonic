@@ -1,7 +1,7 @@
 # Supersonic
 ### __Multiworker Deep RL Agent for OpenAI Gym and Gym Retro__
 ![Sonic Cover Image](supersonic/data/readme_media/readme_cover.jpg)
-Supersonic is an implementation of __Proximal Policy Optimization with Random Network Distillation__, written in eager-execution TensorFlow and with support for multiple workers on high cpu machines or clusters.
+Supersonic is an implementation of __[Proximal Policy Optimization with Random Network Distillation](https://arxiv.org/abs/1810.12894)__, written in eager-execution TensorFlow and with support for multiple workers on high cpu machines or clusters.
 
 To train an agent on the Sonic level 'Green Hill Zone Act1':
 ```shell
