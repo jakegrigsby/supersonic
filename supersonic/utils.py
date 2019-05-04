@@ -26,6 +26,14 @@ def is_sonic_lvl(lvl_id):
 def all_sonic_lvls():
     return {**load_sonic_lvl_set(True), **load_sonic_lvl_set(False)}
 
+def load_atari_lvl_set():
+    lvls = []
+    with open('data/gym-atari.csv') as lvl_file:
+        reader = csv.reader(lvl_file)
+        for row in reader:
+            lvls.append(row[0])
+    return lvls
+
 ############################################################################################
 
 class FrameStack:

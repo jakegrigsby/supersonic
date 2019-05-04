@@ -8,7 +8,7 @@ import cv2
 from supersonic import utils
 
 #don't use the gpu for frame scaling
-USE_GPU_FOR_FRAME_SCALING = True
+USE_GPU_FOR_FRAME_SCALING = False
 cv2.ocl.setUseOpenCL(USE_GPU_FOR_FRAME_SCALING)
 
 
@@ -54,18 +54,8 @@ def build_sonic(lvl):
     env.SONIC = True
     return env
 
-@env_builder('Boxing-v0')
-def build_boxing(lvl):
-    env = base_env(lvl)
-    env = WarpFrame(env)
-    env = BasicNormalize(env)
-    env = MaxAndSkipEnv(env, skip=4)
-    env = StickyActionEnv(env)
-    env = FrameStackWrapper(env)
-    return env
-
-@env_builder('MontezumaRevenge-v0')
-def build_boxing(lvl):
+@env_builder(utils.load_atari_lvl_set())
+def build_atari(lvl):
     env = base_env(lvl)
     env = WarpFrame(env)
     env = BasicNormalize(env)

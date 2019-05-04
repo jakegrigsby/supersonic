@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -A uva-dsi-mlunder
 #SBATCH -n 1
-#SBATCH --cpus-per-task=4
-#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=20
 #SBATCH -o agent.out
 #SBATCH -t 24:00:00
 #SBATCH -p standard
@@ -13,4 +13,4 @@ module load anaconda/5.2.0-py3.6
 source activate cavml
 
 #train the agent
-python "$1"
+srun python train.py

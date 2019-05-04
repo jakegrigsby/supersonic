@@ -6,3 +6,5 @@ sk-video
 visdom
 webcolors
 scipy
+mpi4py
+pandas
