@@ -52,7 +52,9 @@ mpiexec -n *num of workers* python train.py --lvl *env name*
 ```
 Weights are saved in the `weights` directory under a folder with the same name as the `--logdir` you specify.
 
-An additional flag, `--render` can be added if you want to watch training live. This is not reccomended for worker sizes > 4.
+An additional flag, `--render` can be added if you want to watch training live. This is an int that determines how many of the
+parallel environments are rendered. So `mpiexec -n 128 python train.py --render 1` trains with 128 workers but will only render
+1 of them.
 
 At this time, supersonic can only run multiple workers using the cpu version of TensorFlow. This is because it was written to take advantage of research compute clusters where it is much easier to scale using cpus. `tensorflow-gpu` is not compatible with MPI by default, although it seems like it may be possible to build it from source and configure it accordingly. Rewriting to enable a mix of gpu/cpu compute is on the roadmap; it will require rollouts to be spun up using `multiprocessing` instead of `mpi4py`.
 
