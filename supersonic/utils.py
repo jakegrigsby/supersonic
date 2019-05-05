@@ -139,8 +139,8 @@ class Trajectory:
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
         #advantages and returns are normalized
         self.gaes = self._normalize(np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32))
-        self.rews_i = self._normalize(np.asarray(self.discount_cumsum(self.rews_i, gamma_i)).astype(np.float32))
-        self.rews_e = self._normalize(np.asarray(self.discount_cumsum(self.rews_e, gamma_e)).astype(np.float32))
+        self.rews_i = np.asarray(self.discount_cumsum(self.rews_i, gamma_i)).astype(np.float32)
+        self.rews_e = np.asarray(self.discount_cumsum(self.rews_e, gamma_e)).astype(np.float32)
 
     def discount_cumsum(self, x, discount):
         return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]

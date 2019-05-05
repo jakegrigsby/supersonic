@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -A uva-dsi-mlunder
-#SBATCH -n 1
+#SBATCH -n 2
 #SBATCH --cpus-per-task=1
-#SBATCH --ntasks-per-node=20
+#SBATCH --ntasks-per-node=16
 #SBATCH -o agent.out
 #SBATCH -t 24:00:00
 #SBATCH -p standard

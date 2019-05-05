@@ -42,7 +42,7 @@ def build_myenv(lvl):
     return env
 ```
 You should then be able to train on your environment by running
-```mpiexec -n 4 python run_ppo.py --lvl VeryCustomEnvironment-v100```
+```mpiexec -n 4 python train.py --lvl VeryCustomEnvironment-v100```
 
 #### Training Agents
 Training is launched from the command line using the command:
@@ -60,7 +60,7 @@ At this time, supersonic can only run multiple workers using the cpu version of 
 ```shell
 python test.py --lvl *env name* --weights *path to correct weights dir*
 ```
-An example would be `python test.py --lvl GreenHillZone.Act1 --weights weights/agent`. The additional flags `--record` and `--record_path` are a bool and str that let gameplay footage be recorded and saved to the specified directory.
+An example would be `python test.py --lvl GreenHillZone.Act1 --weights weights/agent/final`. The additional flags `--record` and `--record_path` are a bool and str that let gameplay footage be recorded and saved to the specified directory.
 
 
 _Developed by students at the University of Virginia, 2019._

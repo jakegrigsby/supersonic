@@ -44,7 +44,7 @@ def build_sonic(lvl):
     game = utils.get_game_from_sonic_lvl(lvl)
     env = base_env(game, lvl)
     env = WarpFrame(env)
-    env = ClipScaleReward(env, scale=.1, lower_bound=-1, upper_bound=1)
+    env = ClipScaleReward(env, scale=.01, lower_bound=-1, upper_bound=1)
     env = BasicNormalize(env)
     env = SonicDiscretizer(env)
     env = MaxAndSkipEnv(env, skip=4)
