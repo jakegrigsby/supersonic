@@ -1,7 +1,6 @@
 #!/bin/bash
 screen -d -m -S sonicDashboard 'visdom'
-cd supersonic
-python vis_plot.py -port "$1" -server "$2" -run "$3"
+python vis_plot.py -run "$1"
 function close_screen {
     screen -X -S sonicDashboard quit
 }
