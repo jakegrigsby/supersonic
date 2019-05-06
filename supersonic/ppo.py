@@ -13,8 +13,8 @@ class PPOAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.0005, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.4, exp_train_prop=.25, lam=.95, exp_batch_size=32,
-                    ppo_batch_size=32, ppo_clip_value=0.1, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0):
+                    rollout_length=128, ppo_epochs=6, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=1., exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    ppo_batch_size=64, ppo_clip_value=0.3, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0, max_grad_norm=.5):
 
         tf.enable_eager_execution()
         self.comm = MPI.COMM_WORLD
@@ -22,7 +22,6 @@ class PPOAgent:
         self.size = self.comm.Get_size()
 
         self.env = environment.auto_env(env_id)
-        #take random actions to let environment normalize observations before training or testing begins
         utils.random_actions(self.env, random_actions)
 
         try:
@@ -37,6 +36,7 @@ class PPOAgent:
         self.ppo_lr = ppo_lr
         self.exp_optimizer = tf.train.AdamOptimizer(learning_rate=self.exp_lr)
         self.ppo_optimizer = tf.train.AdamOptimizer(learning_rate=self.ppo_lr)
+        self.max_grad_norm = max_grad_norm
         self.minkl = minkl
         self.stop = False
         self.checkpoint_interval = checkpoint_interval
@@ -71,6 +71,9 @@ class PPOAgent:
             self._reset_stats()
     
     def _gather_array(self, array, dtype=np.float32):
+        """
+        Move a numpy array from a worker node to rank 0
+        """
         recv_buff = None
         if self.rank == 0:
             recv_buff = np.empty([self.size] + list(array.shape), dtype=dtype)
@@ -78,6 +81,10 @@ class PPOAgent:
         return recv_buff
     
     def _reshape_trajectory(self, trajectory):
+        """
+        Input: trajectory assembled by MPI Gather op
+        Output: trajectory reshaped to be normal trajectory dimensions, but with the data from every worker.
+        """
         trajectory.states = np.reshape(trajectory.states, (-1,) + trajectory.states.shape[2:])
         trajectory.rews_e = np.expand_dims(trajectory.rews_e.flatten(), -1)
         trajectory.rews_i = np.expand_dims(trajectory.rews_i.flatten(), -1)
@@ -93,7 +100,7 @@ class PPOAgent:
         for rollout in range(rollouts):
             trajectory = self._rollout(self.rollout_length, past_trajectory, render=True if self.rank <= render else False)
             self.comm.barrier()
-            #consolidate each nodes trajectories into one dataset we can train on
+            #consolidate each workers' trajectories into one dataset we can train on
             super_trajectory = utils.Trajectory(self.rollout_length)
             super_trajectory.rews_e = self._gather_array(trajectory.rews_e)
             super_trajectory.rews_i = self._gather_array(trajectory.rews_i)
@@ -106,14 +113,15 @@ class PPOAgent:
             if self.rank == 0:
                 super_trajectory = self._reshape_trajectory(super_trajectory)
                 self._update_models(super_trajectory)
-            #scatter new weights to other nodes
+            #broadcast new weights to workers
             self.comm.barrier()
             self.weights = self.comm.bcast(self.weights, root=0)
             if self.stop: exit() #if early stopping is activated
             past_trajectory = deepcopy(trajectory)
-            if self.rank == 0 and self.checkpoint_interval and rollout % self.checkpoint_interval == 0:
-                self._checkpoint(rollout)
-            if self.rank == 0: progbar.update(rollout+1)
+            if self.rank == 0:
+                progbar.update(rollout+1)
+                if rollout % self.checkpoint_interval == 0:
+                    self._checkpoint(rollout)
             self.comm.barrier()
         self.save_weights('final')
 
@@ -127,7 +135,7 @@ class PPOAgent:
             step = 0
             obs, rew, done, info = self.env.reset(), 0, False, {}
             while step < max_ep_steps and not done:
-                action = self._choose_action(obs, training=stochastic)
+                action = self._choose_action(obs, stochastic=stochastic)
                 obs, rew, done, info = self.env.step(action)
                 if render: self.env.render()
                 cum_rew += rew
@@ -199,7 +207,7 @@ class PPOAgent:
             self.logger.log_episode(episode_log)
             self._reset_stats()
 
-    def _choose_action(self, obs, training=True):
+    def _choose_action(self, obs, stochastic=True):
         """
         Choose an action based on the current observation. Saves computation by not running the value net,
         which makes it a good choice for testing the agent.
@@ -207,13 +215,13 @@ class PPOAgent:
         obs = tf.convert_to_tensor(obs, dtype=tf.float32)
         features = self.vis_model(obs)
         action_probs = np.squeeze(self.policy_model(features))
-        if training:
+        if stochastic:
             action = np.random.choice(np.arange(self.nb_actions), p=action_probs)
         else:
             action = np.argmax(action_probs)
         return action
 
-    def _choose_action_get_value(self, obs, training=True):
+    def _choose_action_get_value(self, obs):
         """
         Run the entire network and return the action probability distribution (not just the chosen action) as well as the values
         from the value net. Used during training -  when more information is needed.
@@ -250,7 +258,7 @@ class PPOAgent:
         exp_train_samples = int(self.rollout_length * self.exp_train_prop)
         idxs = np.random.choice(trajectory.states.shape[0], exp_train_samples, replace=False)
         dataset = tf.data.Dataset.from_tensor_slices((np.take(trajectory.states, idxs, axis=0), np.take(trajectory.exp_targets, idxs, axis=0)))
-        dataset = dataset.shuffle(100).batch(self.exp_batch_size).repeat(self.exp_epochs)
+        dataset = dataset.shuffle(exp_train_samples+1).repeat(self.exp_epochs).batch(self.exp_batch_size)
 
         #update exploration net
         for (batch, (state, target)) in enumerate(dataset):
@@ -259,9 +267,9 @@ class PPOAgent:
             grads = tape.gradient(loss, self.exp_train_model.variables)
             self.exp_optimizer.apply_gradients(zip(grads, self.exp_train_model.variables))
 
-        #create new training set, and send old one to garbage collection
+        #create new training set
         dataset = tf.data.Dataset.from_tensor_slices((trajectory.states, trajectory.rews_e, trajectory.rews_i, trajectory.old_act_probs, trajectory.actions, trajectory.gaes))
-        dataset = dataset.shuffle(100).batch(self.ppo_batch_size).repeat(self.ppo_epochs)
+        dataset = dataset.shuffle(trajectory.states.shape[0]+1).repeat(self.ppo_epochs).batch(self.ppo_batch_size)
         #update policy and value nets
         for (batch, (state, e_rew, i_rew, old_act_prob, action, gae)) in enumerate(dataset):
             with tf.GradientTape() as tape:
@@ -279,7 +287,7 @@ class PPOAgent:
                 v_loss = val_e_loss + val_i_loss
 
                 ratio = tf.exp(new_act_prob - old_act_prob)
-                min_gae = tf.where(gae > 0, (1+self.clip_value)*gae, (1-self.clip_value)*gae)
+                min_gae = tf.where(gae >= 0, (1+self.clip_value)*gae, (1-self.clip_value)*gae)
                 p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
                 entropy = tf.reduce_mean(-new_act_prob)
 
@@ -287,7 +295,7 @@ class PPOAgent:
 
             #backprop and apply grads
             variables = self.vis_model.variables + self.policy_model.variables + self.val_model_e.variables + self.val_model_i.variables
-            grads = tape.gradient(loss, variables)
+            grads, _ = tf.clip_by_global_norm(tape.gradient(loss, variables), self.max_grad_norm)
             self.ppo_optimizer.apply_gradients(zip(grads, variables))
 
             approxkl = tf.reduce_mean(old_act_prob - new_act_prob)

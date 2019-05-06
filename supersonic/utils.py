@@ -138,7 +138,7 @@ class Trajectory:
         deltas = self.rews_i + gamma_i * self.vals_i[1:] - self.vals_i[:-1]
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
         #advantages and returns are normalized
-        self.gaes = self._normalize(np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32))
+        self.gaes = np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32)
         self.rews_i = np.asarray(self.discount_cumsum(self.rews_i, gamma_i)).astype(np.float32)
         self.rews_e = np.asarray(self.discount_cumsum(self.rews_e, gamma_e)).astype(np.float32)
 
