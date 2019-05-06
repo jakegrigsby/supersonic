@@ -50,7 +50,7 @@ def build_sonic(lvl):
     env = MaxAndSkipEnv(env, skip=4)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
-    env = AllowBacktrackingAddMaxSteps(env, max_steps=300)
+    env = AllowBacktrackingAddMaxSteps(env, max_steps=4500)
     env.SONIC = True
     return env
 
