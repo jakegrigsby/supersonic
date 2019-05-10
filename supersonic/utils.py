@@ -125,20 +125,21 @@ class Trajectory:
         self.actions = np.asarray(self.actions)[:self.rollout_length]
 
     def _normalize(self, ndarray):
-            return (ndarray - ndarray.mean()) / (ndarray.std() + 1e-5)
+            return (ndarray - ndarray.mean()) / (ndarray.std() + 1e-7)
 
-    def end_trajectory(self, gamma_i, gamma_e, lam, last_val_i, last_val_e):
+    def end_trajectory(self, e_rew_coeff, i_rew_coeff, gamma_i, gamma_e, lam, last_val_i, last_val_e):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
-        #calculate advantages
         self.vals_e.append(last_val_e)
         self.vals_i.append(last_val_i)
         self._lists_to_ndarrays()
+        #internal rewards are normalized
+        self.rews_i = self._normalize(self.rews_i)
         deltas = self.rews_e + gamma_e * self.vals_e[1:] - self.vals_e[:-1]
         e_adv = self.discount_cumsum(deltas, gamma_e * lam)
         deltas = self.rews_i + gamma_i * self.vals_i[1:] - self.vals_i[:-1]
         i_adv = self.discount_cumsum(deltas, gamma_i * lam)
-        #advantages and returns are normalized
-        self.gaes = np.expand_dims(np.asarray(e_adv) + np.asarray(i_adv), axis=1).astype(np.float32)
+        #calculate advantages and returns
+        self.gaes = np.expand_dims(e_rew_coeff*np.asarray(e_adv) + i_rew_coeff*np.asarray(i_adv), axis=1).astype(np.float32)
         self.rews_i = np.asarray(self.discount_cumsum(self.rews_i, gamma_i)).astype(np.float32)
         self.rews_e = np.asarray(self.discount_cumsum(self.rews_e, gamma_e)).astype(np.float32)
 

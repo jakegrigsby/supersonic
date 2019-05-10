@@ -13,8 +13,8 @@ class PPOAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=1., exp_train_prop=.25, lam=.95, exp_batch_size=32,
-                    ppo_batch_size=32, ppo_clip_value=0.2, checkpoint_interval=1000, minkl=None, entropy_coeff=.01, random_actions=0, max_grad_norm=.5):
+                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2.5, i_rew_coeff=1., vf_coeff=1., exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    ppo_batch_size=32, ppo_clip_value=0.2, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0, max_grad_norm=1.):
 
         tf.enable_eager_execution()
         self.comm = MPI.COMM_WORLD
@@ -155,20 +155,19 @@ class PPOAgent:
         while step < steps:
             if done: 
                 obs, e_rew, done, info = self.env.reset(), 0, False, {} #trajectories roll through the end of episodes
-                #linearly increase maximum env runtime. Found this to speed up early training
             action_prob, action, val_e, val_i = self._choose_action_get_value(obs)
             val_e, val_i = (val_e, val_i) if not done else (0, 0)
             obs2, e_rew, done, info = self.env.step(action)
             if render: self.env.render()
             i_rew, exp_target = self._calc_intrinsic_reward(obs)
-            trajectory.add(obs, self.e_rew_coeff*e_rew, self.i_rew_coeff*i_rew, exp_target, (action_prob, action), val_e, val_i)
+            trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
             if self.env_is_sonic and self.rank == 0:
                 self._update_ep_stats(action, e_rew, i_rew, done, info)
             step += 1
             obs = obs2
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
-        trajectory.end_trajectory(self.gamma_i, self.gamma_e, self.lam, last_val_i, last_val_e)
+        trajectory.end_trajectory(self.e_rew_coeff, self.i_rew_coeff, self.gamma_i, self.gamma_e, self.lam, last_val_i, last_val_e)
         return trajectory
 
     def _reset_stats(self):
@@ -290,7 +289,7 @@ class PPOAgent:
                 p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
                 entropy = tf.reduce_mean(-new_act_prob)
 
-                loss = tf.clip_by_value(p_loss + self.vf_coeff*v_loss - self.entropy_coeff*entropy, -1, 1)
+                loss = p_loss + self.vf_coeff*v_loss - self.entropy_coeff*entropy
 
             #backprop and apply grads
             variables = self.vis_model.variables + self.policy_model.variables + self.val_model_e.variables + self.val_model_i.variables
