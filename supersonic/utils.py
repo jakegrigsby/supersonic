@@ -181,26 +181,6 @@ def load_hyp_dict_from_file(filename):
 
 #########################################################################################
 
-def get_lvl_map(lvl_id):
-    maps_dir = os.path.join('data','lvl_maps')
-    game = get_game_from_sonic_lvl(lvl_id)
-    lvl_id = lvl_id.replace('.','') + '.png'
-    lvl_path = os.path.join(game, lvl_id)
-    lvl_path = os.path.join(maps_dir, lvl_path)
-    img = cv2.imread(lvl_path)
-    return np.transpose(img, (1, 0, 2)) #rotate image
-
-def get_avg_lvl_map_dims():
-    num_lvls = len(all_sonic_lvls().keys())
-    x_sizes, y_sizes = np.zeros(num_lvls), np.zeros(num_lvls)
-    for idx, lvl_id in enumerate(all_sonic_lvls().keys()):
-        lvl_map = get_lvl_map(lvl_id)
-        x_sizes[idx] = lvl_map.shape[0]
-        y_sizes[idx] = lvl_map.shape[1]
-    return (int(np.mean(x_sizes)), int(np.mean(y_sizes)))
-
-##################################################################################
-
 def random_actions(env, steps):
         obs, rew, done, info = None, 0, False, {}
         for step in range(steps):
