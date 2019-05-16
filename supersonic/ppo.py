@@ -13,8 +13,8 @@ class PPOAgent:
     """
     def __init__(self, env_id, exp_lr=.001, ppo_lr=.0001, vis_model='NatureVision', policy_model='NaturePolicy', val_model='VanillaValue',
                     exp_target_model='NatureVision', exp_train_model='NatureVision', exp_epochs=4, gamma_i=.99, gamma_e=.999, log_dir=None,
-                    rollout_length=128, ppo_epochs=4, e_rew_coeff=2.5, i_rew_coeff=1., vf_coeff=1., exp_train_prop=.25, lam=.95, exp_batch_size=32,
-                    ppo_batch_size=32, ppo_clip_value=0.2, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0, max_grad_norm=1.):
+                        rollout_length=128, ppo_epochs=4, e_rew_coeff=2., i_rew_coeff=1., vf_coeff=.25, exp_train_prop=.25, lam=.95, exp_batch_size=32,
+                    ppo_batch_size=32, ppo_clip_value=0.1, checkpoint_interval=1000, minkl=None, entropy_coeff=.001, random_actions=0, max_grad_norm=0.):
 
         tf.enable_eager_execution()
         self.comm = MPI.COMM_WORLD
@@ -163,8 +163,8 @@ class PPOAgent:
             trajectory.add(obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i)
             if self.env_is_sonic and self.rank == 0:
                 self._update_ep_stats(action, e_rew, i_rew, done, info)
-            step += 1
             obs = obs2
+            step += 1
         _, _, last_val_e, last_val_i = self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         self.most_recent_step = (obs, e_rew, done, info)
         trajectory.end_trajectory(self.e_rew_coeff, self.i_rew_coeff, self.gamma_i, self.gamma_e, self.lam, last_val_i, last_val_e)
@@ -212,7 +212,7 @@ class PPOAgent:
         """
         obs = tf.convert_to_tensor(obs, dtype=tf.float32)
         features = self.vis_model(obs)
-        action_probs = np.squeeze(self.policy_model(features))
+        action_probs = np.squeeze(self.policy_model(features)) + 1e-8
         if stochastic:
             action = np.random.choice(np.arange(self.nb_actions), p=action_probs)
         else:
@@ -226,7 +226,7 @@ class PPOAgent:
         """
         obs = tf.convert_to_tensor(obs, dtype=tf.float32)
         features = self.vis_model(obs)
-        action_probs = np.squeeze(np.transpose(self.policy_model(features)), axis=-1)
+        action_probs = np.squeeze(np.transpose(self.policy_model(features)), axis=-1) + 1e-8
         action_idx = np.random.choice(np.arange(self.nb_actions), p=action_probs)
         action_prob = action_probs[action_idx]
         val_e = tf.squeeze(self.val_model_e(features))
@@ -293,7 +293,9 @@ class PPOAgent:
 
             #backprop and apply grads
             variables = self.vis_model.variables + self.policy_model.variables + self.val_model_e.variables + self.val_model_i.variables
-            grads, _ = tf.clip_by_global_norm(tape.gradient(loss, variables), self.max_grad_norm)
+            grads = tape.gradient(loss, variables)
+            if self.max_grad_norm:
+                grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
             self.ppo_optimizer.apply_gradients(zip(grads, variables))
 
             approxkl = tf.reduce_mean(old_act_prob - new_act_prob)

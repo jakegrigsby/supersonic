@@ -93,6 +93,10 @@ class Trajectory:
         self.exp_targets = []
         self.actions = []
 
+        self._irew_mean = np.zeros((), dtype=np.float32)
+        self._irew_var = np.ones((), dtype=np.float32)
+        self._irew_update_count = 1e-4
+
         self.rollout_length = rollout_length
 
         # if given a past trajectory to resume from, the first elements in this trajectory will be the last from the old one
@@ -123,17 +127,35 @@ class Trajectory:
         self.vals_i = np.asarray(self.vals_i)[:self.rollout_length+1]
         self.exp_targets = np.asarray(self.exp_targets)[:self.rollout_length]
         self.actions = np.asarray(self.actions)[:self.rollout_length]
+ 
+    def _irew_norm_update(self, rews_i):
+        trajec_mean, trajec_std, trajec_count = np.mean(rews_i, axis=0), np.std(rews_i, axis=0), rews_i.shape[0]
+        trajec_var = np.square(trajec_std)
+        self._irew_norm_update_from_moments(trajec_mean, trajec_var, trajec_count)
+    
+    def _irew_norm_update_from_moments(self, mean, var, count):
+        delta = mean - self._irew_mean
+        total_count = self._irew_update_count + count
 
-    def _normalize(self, ndarray):
-            return (ndarray - ndarray.mean()) / (ndarray.std() + 1e-7)
+        new_mean = self._irew_mean + delta * count / total_count
+        m_a = self._irew_var * self._irew_update_count
+        m_b = var * count
+        M2 = m_a + m_b + np.square(delta) * self._irew_update_count * count / total_count
+        self._irew_mean = new_mean
+        self._irew_var = M2 / total_count
+        self._irew_update_count = total_count
+    
+    def normalize_rews_i(self, rews_i):
+        self._irew_norm_update(rews_i)
+        return (rews_i - self._irew_mean) / (np.sqrt(self._irew_var) + 1e-8)
 
     def end_trajectory(self, e_rew_coeff, i_rew_coeff, gamma_i, gamma_e, lam, last_val_i, last_val_e):
         """calculate gaes, rewards-to-go, convert to numpy arrays."""
         self.vals_e.append(last_val_e)
         self.vals_i.append(last_val_i)
         self._lists_to_ndarrays()
-        #internal rewards are normalized
-        self.rews_i = self._normalize(self.rews_i)
+        #normalize internal advantages, not external. Uses running mean and std
+        self.rews_i = self.normalize_rews_i(self.rews_i)
         deltas = self.rews_e + gamma_e * self.vals_e[1:] - self.vals_e[:-1]
         e_adv = self.discount_cumsum(deltas, gamma_e * lam)
         deltas = self.rews_i + gamma_i * self.vals_i[1:] - self.vals_i[:-1]

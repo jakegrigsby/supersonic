@@ -44,7 +44,7 @@ def build_sonic(lvl):
     game = utils.get_game_from_sonic_lvl(lvl)
     env = base_env(game, lvl)
     env = WarpFrame(env)
-    env = ClipScaleReward(env, scale=.01, lower_bound=-1, upper_bound=1)
+    env = ClipScaleReward(env, scale=.05, lower_bound=-1, upper_bound=1)
     env = BasicNormalize(env)
     env = SonicDiscretizer(env)
     env = MaxAndSkipEnv(env, skip=4)
@@ -276,7 +276,6 @@ class AllowBacktrackingAddMaxSteps(gym.Wrapper):
             self._max_x = max(self._max_x, self._cur_x)
             self._step_count += 1
             self._last_info = info
-        if rew<0: import pdb; pdb.set_trace()
         return obs, rew, done, info
 
 class SonicDiscretizer(gym.ActionWrapper):
