@@ -7,6 +7,7 @@ import numpy as np
 
 from supersonic import utils
 
+
 class Camera(gym.Wrapper):
     """
     Recording gameplay footage.
@@ -19,6 +20,7 @@ class Camera(gym.Wrapper):
                 occured. Useful when the decision to record can only be made after a key event (like the first time a tough
                 obstacle is cleared).
     """
+
     def __init__(self, agent, raw_frames=True, highlight_buffer_capacity=250):
         self.env = agent.env
         super().__init__(self.env)
@@ -27,7 +29,9 @@ class Camera(gym.Wrapper):
         self.record_that_enabled = bool(highlight_buffer_capacity)
         if raw_frames:
             self._dive_down()
-        self._buffer = utils.FrameStack(capacity=highlight_buffer_capacity, default_frame=self.env.reset()) 
+        self._buffer = utils.FrameStack(
+            capacity=highlight_buffer_capacity, default_frame=self.env.reset()
+        )
 
     def reset(self):
         self._buffer.reset()
@@ -40,11 +44,11 @@ class Camera(gym.Wrapper):
         output_path: file path for recorded video
         """
         filename, extension = os.path.splitext(output_path)
-        filename += '.mp4'
+        filename += ".mp4"
         self.rec_output_path = filename
         self.recording = True
         self.clip, self.actions = [], []
-    
+
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
         if self.record_that_enabled:
@@ -61,7 +65,7 @@ class Camera(gym.Wrapper):
         This function positions the Camera module just above the unwrapped env.
         """
         if not hasattr(self.env, "env"):
-            #the env is the base env
+            # the env is the base env
             return
         inner_wrapper = self.env
         while not inner_wrapper.env.unwrapped == inner_wrapper.env:
@@ -90,18 +94,14 @@ class Camera(gym.Wrapper):
             self._buffer.reset()
         else:
             raise AttributeError()
-    
+
     def _enable_record(self, output_dir):
         self.env.record(output_dir)
-    
+
     def _enable_stop_recording(self):
         self.env.stop_recording()
 
     def _enable_record_that(self, output_dir):
         self.env.record_that(output_dir)
-    
+
     record = start_recording
-
-
-
-

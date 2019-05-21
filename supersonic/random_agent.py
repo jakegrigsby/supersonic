@@ -7,7 +7,6 @@ from supersonic import environment, utils, logger, camera
 
 
 class SonicRandomAgent:
-
     def __init__(self, env_id, use_custom_env=True):
         self.env_id = env_id
         if use_custom_env:
@@ -36,9 +35,9 @@ class SonicRandomAgent:
         return 1
 
 
-if __name__ == '__main__':
-    x = SonicRandomAgent('GreenHillZone.Act1', False)
+if __name__ == "__main__":
+    x = SonicRandomAgent("GreenHillZone.Act1", False)
     cam = camera.Camera(x)
-    cam.start_recording('testvideo.mov')
+    cam.start_recording("testvideo.mov")
     x.run(40, render=True, max_steps=1000)
     cam.stop_recording()
