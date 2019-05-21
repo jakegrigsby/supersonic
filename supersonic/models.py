@@ -65,11 +65,13 @@ class NaturePolicy(tf.keras.Model):
 
     def __init__(self, nb_actions):
         super().__init__()
-        self.dense1 = tf.keras.layers.Dense(512, activation="relu")
+        self.dense1 = tf.keras.layers.Dense(128, activation="relu")
+        self.dense2 = tf.keras.layers.Dense(64, activation="relu")
         self.out = tf.keras.layers.Dense(nb_actions, activation="softmax")
 
     def call(self, inputs):
         x = self.dense1(inputs)
+        x = self.dense2(x)
         x = self.out(x)
         return x
 
