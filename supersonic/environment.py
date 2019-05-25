@@ -50,13 +50,14 @@ def build_sonic(lvl):
     game = utils.get_game_from_sonic_lvl(lvl)
     env = base_env(game, lvl)
     env = WarpFrame(env)
-    env = ClipScaleReward(env, scale=0.05, lower_bound=-1, upper_bound=1)
-    env = BasicNormalize(env)
+    env = ClipScaleReward(env, scale=0.01, lower_bound=-1, upper_bound=1)
+    env = ScaledFloatFrame(env)
+    env = DynamicNormalize(env)
     env = SonicDiscretizer(env)
     env = MaxAndSkipEnv(env, skip=4)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
-    env = AllowBacktrackingAddMaxSteps(env, max_steps=4500)
+    env = AllowBacktrackingAddMaxSteps(env, max_steps=300)
     env.SONIC = True
     return env
 
@@ -171,7 +172,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         return self.env.reset(**kwargs)
 
 
-class BasicNormalize(gym.ObservationWrapper):
+class ScaledFloatFrame(gym.ObservationWrapper):
     def observation(self, obs):
         obs = obs.astype(np.float32)
         return obs / 255
@@ -184,11 +185,13 @@ class DynamicNormalize(gym.Wrapper):
     adapt_until: adjust the mean and variance for this many steps
     """
 
-    def __init__(self, env, adapt_until=10000, normalize_rew=False):
+    def __init__(self, env, obs_min=-5, obs_max=5, adapt_until=10000, normalize_rew=False):
         super().__init__(env)
         self.adapt_until = adapt_until
         self.reset_normalization()
         self.normalize_rew = normalize_rew
+        self.obs_min = obs_min
+        self.obs_max = obs_max
 
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
@@ -213,26 +216,21 @@ class DynamicNormalize(gym.Wrapper):
             self.update_stats(obs, rew)
         obs_var = self.o_m2 / ((self.count - 1) + 1e-4)
         obs_std = np.sqrt(obs_var)
-        norm_obs = (obs - self.o_mean) / (obs_std + 1e-5)
+        obs = (obs - self.o_mean) / (obs_std + 1e-5)
+        obs = np.clip(obs, self.obs_min, self.obs_max)
 
         if self.normalize_rew:
             rew_var = self.r_m2 / ((self.count - 1) + 1e-4)
             rew_std = math.sqrt(rew_var)
             rew = (rew - self.r_mean) / (rew_std + 1e-5)
 
-        return norm_obs, rew
+        return obs, rew
 
     def reset_normalization(self):
         self.count = 0
-        self.o_mean = [
-            np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))
-        ]
-        self.o_m2 = [
-            np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))
-        ]
-        self.o_variance = [
-            np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))
-        ]
+        self.o_mean = np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))
+        self.o_m2 = np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))
+        self.o_variance = np.squeeze(np.zeros(self.env.observation_space.shape).astype(np.float32))
         self.r_mean, self.r_m2, self.r_var = 0.0, 0.0, 0.0
 
     def reset(self, **kwargs):
@@ -252,7 +250,6 @@ class FrameStackWrapper(gym.Wrapper):
         self.frames = utils.FrameStack(
             capacity=k, default_frame=self.env.reset(), dtype=np.float32
         )
-        self.iter_counter = 0
 
     def reset(self):
         self.env.reset()
