@@ -12,12 +12,11 @@ class PPOAgent:
     """
     Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
-
     def __init__(
         self,
         env_id,
         exp_lr=0.001,
-        ppo_lr=0.0005,
+        ppo_lr=0.0003,
         vis_model="NatureVision",
         policy_model="VanillaPolicy",
         val_model="VanillaValue",
@@ -31,20 +30,21 @@ class PPOAgent:
         ppo_epochs=4,
         e_rew_coeff=2.0,
         i_rew_coeff=1.0,
-        vf_coeff=0.25,
+        vf_coeff=0.5,
         exp_train_prop=0.25,
         lam=0.95,
         exp_batch_size=32,
         ppo_batch_size=32,
-        ppo_clip_value=0.2,
-        checkpoint_interval=1000,
+        ppo_clip_value=0.15,
+        checkpoint_interval=500,
         minkl=None,
-        entropy_coeff=0.01,
-        random_rollouts=1,
+        entropy_coeff=.0001,
+        random_rollouts=10,
         max_grad_norm=.5,
     ):
 
         tf.enable_eager_execution()
+        tf.logging.set_verbosity(tf.logging.FATAL)
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
@@ -116,16 +116,12 @@ class PPOAgent:
         Input: trajectory assembled by MPI Gather op
         Output: trajectory reshaped to be normal trajectory dimensions, but with the data from every worker.
         """
-        trajectory.states = np.reshape(
-            trajectory.states, (-1,) + trajectory.states.shape[2:]
-        )
+        trajectory.states = np.reshape(trajectory.states, (-1,) + trajectory.states.shape[2:])
         trajectory.rets_e = np.expand_dims(trajectory.rets_e.flatten(), -1)
         trajectory.rets_i = np.expand_dims(trajectory.rets_i.flatten(), -1)
         trajectory.gaes = np.squeeze(trajectory.gaes.flatten())
         trajectory.old_act_probs = trajectory.old_act_probs.flatten()
-        trajectory.exp_targets = np.reshape(
-            trajectory.exp_targets, (-1, trajectory.exp_targets.shape[-1])
-        )
+        trajectory.exp_targets = np.reshape(trajectory.exp_targets, (-1, trajectory.exp_targets.shape[-1]))
         trajectory.actions = trajectory.actions.flatten()
         trajectory.dones = trajectory.dones.flatten()
         return trajectory
@@ -133,9 +129,7 @@ class PPOAgent:
     def train(self, rollouts, render=0):
         # calibrate i_rew normalizaiton stats using random rollouts
         for random_rollout in range(self.random_rollouts):
-            trajectory = self._rollout(
-                self.rollout_length, render=False
-            )
+            trajectory = self._rollout(self.rollout_length, render=False)
             if self.rank == 0:
                 # update exploration nets to bring the loss to normal levels once ppo begins to train
                 self._update_models(trajectory, update_exp_only=True)
@@ -152,29 +146,25 @@ class PPOAgent:
             )
             self.comm.barrier()
             # consolidate each workers' trajectories into one dataset we can train on
-            super_trajectory = utils.Trajectory(self.rollout_length)
+            super_trajectory = utils.Trajectory()
             super_trajectory.rets_e = self._gather_array(trajectory.rets_e)
             super_trajectory.rets_i = self._gather_array(trajectory.rets_i)
             super_trajectory.gaes = self._gather_array(trajectory.gaes)
-            super_trajectory.old_act_probs = self._gather_array(
-                trajectory.old_act_probs
-            )
+            super_trajectory.old_act_probs = self._gather_array(trajectory.old_act_probs)
             super_trajectory.exp_targets = self._gather_array(trajectory.exp_targets)
-            super_trajectory.actions = self._gather_array(
-                trajectory.actions, dtype=np.int64
-            )
+            super_trajectory.actions = self._gather_array(trajectory.actions, dtype=np.int64)
             super_trajectory.states = self._gather_array(trajectory.states)
-            super_trajectory.dones = self._gather_array(trajectory.dones)
+            super_trajectory.dones = self._gather_array(trajectory.dones, dtype=np.int8)
             self.comm.barrier()
             if self.rank == 0:
                 super_trajectory = self._reshape_trajectory(super_trajectory)
                 # train the models
                 self._update_models(super_trajectory)
-            # broadcast new weights to workers
             self.comm.barrier()
+            # broadcast new weights to workers
             self.weights = self.comm.bcast(self.weights, root=0)
             if self.stop:
-                exit()  # if early stopping is activated
+                break # if early stopping activated
             if self.rank == 0:
                 progbar.update(rollout + 1)
                 if rollout % self.checkpoint_interval == 0:
@@ -184,7 +174,7 @@ class PPOAgent:
 
     def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
         try:
-            self.env.max_steps = max_ep_steps
+            self.env.current_max_steps = max_ep_steps
         except:
             pass
         cum_rew = 0
@@ -202,7 +192,8 @@ class PPOAgent:
 
     def _rollout(self, steps, render=False):
         """
-        Step through the environment using current policy. Calculate all the metrics needed by update_models() and save it to a util.Trajectory object
+        Step through the environment using current policy. Calculate all the metrics needed by 
+        update_models() and save it to a util.Trajectory object
         """
         if not self.most_recent_step[2]:  # if not done
             obs, e_rew, done, info = self.most_recent_step
@@ -214,17 +205,9 @@ class PPOAgent:
         )
         while step < steps:
             if done:
-                obs, e_rew, done, info = (
-                    self.env.reset(),
-                    0,
-                    False,
-                    {},
-                )  # trajectories roll through the end of episodes
-                # this max step trick helps performance on sonic levels
-                if self.env_is_sonic:
-                    self.env.max_steps = min(self.env.max_steps + 50, 4500)
+                obs, e_rew, done, info = self.env.reset(), 0, False, {}
             action_prob, action, val_e, val_i = self._choose_action_get_value(obs)
-            val_e, val_i = (val_e, val_i) if not done else (0, 0)
+            val_e, val_i = (val_e, val_i) if not done else (0, val_i)
             obs2, e_rew, done, info = self.env.step(action)
             if render:
                 self.env.render()
@@ -236,7 +219,7 @@ class PPOAgent:
                 self._update_ep_stats(action, e_rew, i_rew, done, info)
             obs = obs2
             step += 1
-        _, _, last_val_e, last_val_i = (
+        *_, last_val_e, last_val_i = (
             self._choose_action_get_value(obs) if not done else (0, 0, 0, 0)
         )
         self.most_recent_step = (obs, e_rew, done, info)
@@ -309,9 +292,7 @@ class PPOAgent:
         """
         obs = tf.convert_to_tensor(obs, dtype=tf.float32)
         features = self.vis_model(obs)
-        action_probs = (
-            np.squeeze(np.transpose(self.policy_model(features)), axis=-1) + 1e-8
-        )
+        action_probs = np.squeeze(self.policy_model(features)) + 1e-8
         action_idx = np.random.choice(np.arange(self.nb_actions), p=action_probs)
         action_prob = action_probs[action_idx]
         val_e = tf.squeeze(self.val_model_e(features))
@@ -326,15 +307,10 @@ class PPOAgent:
         target = self.exp_target_model(state)
         pred = self.exp_train_model(state)
         rew = np.mean(np.square(target - pred))
-        return (
-            rew,
-            target,
-        )  # save targets to trajectory to avoid another call to the exp_target_model network during update_models()
+        return rew, target
 
     def _checkpoint(self, rollout_num):
-        save_path = "weights/{}/checkpoint_{}".format(
-            os.path.basename(self.log_dir), rollout_num
-        )
+        save_path = f"weights/{os.path.basename(self.log_dir)}/checkpoint_{rollout_num}"
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         self.save_weights(save_path)
@@ -345,9 +321,7 @@ class PPOAgent:
         """
         # create new training set
         exp_train_samples = int(self.rollout_length * self.exp_train_prop)
-        idxs = np.random.choice(
-            trajectory.states.shape[0], exp_train_samples, replace=False
-        )
+        idxs = np.random.choice(trajectory.states.shape[0], exp_train_samples, replace=False)
         dataset = tf.data.Dataset.from_tensor_slices(
             (
                 np.take(trajectory.states, idxs, axis=0),
@@ -365,6 +339,8 @@ class PPOAgent:
             with tf.GradientTape() as tape:
                 loss = tf.reduce_mean(tf.square(target - self.exp_train_model(state)))
             grads = tape.gradient(loss, self.exp_train_model.variables)
+            if self.max_grad_norm:
+                grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
             self.exp_optimizer.apply_gradients(
                 zip(grads, self.exp_train_model.variables), global_step=self.global_step,
             )
@@ -389,9 +365,7 @@ class PPOAgent:
             .batch(self.ppo_batch_size)
         )
         # update policy and value nets
-        for (batch, (state, e_ret, i_ret, old_act_prob, action, gae)) in enumerate(
-            dataset
-        ):
+        for (batch, (state, e_ret, i_ret, old_act_prob, action, gae)) in enumerate(dataset):
             with tf.GradientTape() as tape:
                 row_idxs = tf.range(action.shape[0], dtype=tf.int64)
                 action = tf.stack([row_idxs, tf.squeeze(action)], axis=1)
@@ -411,12 +385,16 @@ class PPOAgent:
                     gae >= 0, (1 + self.clip_value) * gae, (1 - self.clip_value) * gae
                 )
                 p_loss = -tf.reduce_mean(tf.minimum(ratio * gae, min_gae))
-                entropy = tf.reduce_mean(-new_act_prob)
-                print()
+                entropy = tf.reduce_mean(
+                    -tf.reduce_sum(new_act_probs * tf.log(new_act_probs), axis=1)
+                )
+                """
                 print(f"{p_loss}")
-                print(f"{self.entropy_coeff*entropy}")
                 print(f"{self.vf_coeff*val_i_loss}")
                 print(f"{self.vf_coeff*val_e_loss}")
+                print(f"{self.entropy_coeff*entropy}")
+                print()
+                """
                 loss = p_loss + self.vf_coeff * v_loss - self.entropy_coeff * entropy
 
             # backprop and apply grads
@@ -428,7 +406,7 @@ class PPOAgent:
             )
             grads = tape.gradient(loss, variables)
             if self.max_grad_norm:
-                grads, norm = tf.clip_by_global_norm(grads, self.max_grad_norm)
+                grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
             self.ppo_optimizer.apply_gradients(zip(grads, variables), global_step=self.global_step)
 
             approxkl = tf.reduce_mean(old_act_prob - new_act_prob)

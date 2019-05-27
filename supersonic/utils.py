@@ -4,8 +4,8 @@ import json
 import math
 
 import numpy as np
-import scipy.signal
 import cv2
+import matplotlib.pyplot as plt
 
 
 def load_sonic_lvl_set(train=True):
@@ -97,7 +97,7 @@ class Trajectory:
     calculated and made available.
     """
 
-    def __init__(self, rollout_length, i_rew_running_stats=None):
+    def __init__(self, rollout_length=128, i_rew_running_stats=None):
         # keeping track of attributes used in update_models
         self.states = []
         self.rews_i = []
@@ -135,29 +135,31 @@ class Trajectory:
         self.vals_i = np.asarray(self.vals_i)
         self.exp_targets = np.asarray(self.exp_targets)
         self.actions = np.asarray(self.actions)
+        self.dones = np.asarray(self.dones).astype(np.int8)
 
     def normalize_rews_i(self, rews_i):
         return rews_i / (self.i_rew_running_stats.standard_deviation() + 1e-8)
 
-    def end_trajectory(
-        self, e_rew_coeff, i_rew_coeff, gamma_i, gamma_e, lam, last_val_i, last_val_e
-    ):
-        """calculate gaes, rewards-to-go, convert to numpy arrays."""
+    def end_trajectory(self, e_rew_coeff, i_rew_coeff, gamma_i, gamma_e, lam, last_val_i, last_val_e):
+        """calculate gaes, returns, convert to numpy arrays."""
         self.vals_e.append(last_val_e)
         self.vals_i.append(last_val_i)
         self._lists_to_ndarrays()
-        # normalize internal advantages, not external. Uses running mean and std
-        self.rews_i = self.normalize_rews_i(self.rews_i)
+        # normalize internal rews, but shrink them to same scale as external rewards
+        self.rews_i = .01 * self.normalize_rews_i(self.rews_i)
 
-        gae = np.zeros_like((self.rollout_length))
+        #calculate internal returns/advantages
+        gae = np.zeros(())
         discounted_return_e = np.zeros(self.rollout_length)
         for t in range(self.rollout_length - 1, -1, -1):
+            #external returns are episodic, so we factor in the done values
             delta = self.rews_e[t] + gamma_e * self.vals_e[t+1] * (1 - self.dones[t]) - self.vals_e[t]
             gae = delta + gamma_e * lam * (1 - self.dones[t]) * gae
             discounted_return_e[t] = gae + self.vals_e[t]
         adv_e = discounted_return_e - self.vals_e[:-1]
 
-        gae = np.zeros_like((self.rollout_length))
+        #calculate external returns/advantages
+        gae = np.zeros(())
         discounted_return_i = np.zeros(self.rollout_length)
         for t in range(self.rollout_length - 1, -1, -1):
             delta = self.rews_i[t] + gamma_i * self.vals_i[t+1] - self.vals_i[t]
@@ -165,14 +167,9 @@ class Trajectory:
             discounted_return_i[t] = gae + self.vals_i[t]
         adv_i = discounted_return_i - self.vals_i[:-1]
 
-        self.rets_e = discounted_return_e
-        self.rets_i = discounted_return_i
-        self.gaes = np.expand_dims(e_rew_coeff * adv_e + i_rew_coeff * adv_i, axis=-1)
-        import pdb; pdb.set_trace()
-
-    def discount_cumsum(self, x, discount):
-        return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
-
+        self.rets_e = discounted_return_e.astype(np.float32)
+        self.rets_i = discounted_return_i.astype(np.float32)
+        self.gaes = np.expand_dims(e_rew_coeff * adv_e + i_rew_coeff * adv_i, axis=-1).astype(np.float32)
 
 #########################################################################################
 
@@ -202,6 +199,7 @@ def random_actions(env, steps):
 
 
 class RunningStats:
+    """Used to maintain running estimate of the internal rewards' variance"""
     def __init__(self):
         self.n = 0
         self.old_m = 0
@@ -233,3 +231,8 @@ class RunningStats:
 
     def standard_deviation(self):
         return math.sqrt(self.variance())
+
+#######################################################################################
+
+def moving_average(x, w):
+    return np.convolve(x, np.ones(w), 'same') / w

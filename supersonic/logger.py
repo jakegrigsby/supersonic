@@ -128,18 +128,3 @@ class EpisodeLog:
         self.internal_reward = params["internal_reward"]
         self.action_count = params["action_count"]
         # @TODO: implement action distribution, video playback buffer
-
-    # Function __dir()___ which list all
-    # the base attributes to be used.
-    # def __dir__(self):
-    #     return self.required_params
-
-
-class TrajectoryLog:
-    """
-    Contains information about one trajectory.
-    """
-
-    def __init__(self, episode_num):
-        self.episode_num = episode_num
-        # @TODO: add more stuff here

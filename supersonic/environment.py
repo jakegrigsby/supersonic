@@ -52,12 +52,11 @@ def build_sonic(lvl):
     env = WarpFrame(env)
     env = ClipScaleReward(env, scale=0.01, lower_bound=-1, upper_bound=1)
     env = ScaledFloatFrame(env)
-    env = DynamicNormalize(env)
     env = SonicDiscretizer(env)
     env = MaxAndSkipEnv(env, skip=4)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
-    env = AllowBacktrackingAddMaxSteps(env, max_steps=300)
+    env = AllowBacktrackingAddMaxSteps(env)
     env.SONIC = True
     return env
 
@@ -281,11 +280,12 @@ class AllowBacktrackingAddMaxSteps(gym.Wrapper):
     Important for Sonic.
     """
 
-    def __init__(self, env, max_steps=4500):
+    def __init__(self, env, initial_max_steps=300, final_max_steps=4500):
         super().__init__(env)
         self._cur_x = 0
         self._max_x = 0
-        self.max_steps = max_steps
+        self.current_max_steps = initial_max_steps
+        self.final_max_steps = final_max_steps
         self._step_count = 0
         self._last_info = {}
 
@@ -297,9 +297,11 @@ class AllowBacktrackingAddMaxSteps(gym.Wrapper):
         return self.env.reset(**kwargs)
 
     def step(self, action):
-        if self._step_count >= self.max_steps:
+        if self._step_count >= self.current_max_steps:
             obs, rew, done, info = self.env.reset(), 0, True, self._last_info
             info["FORCED EXIT"] = True
+            #increase max steps. helpful for high exploration environments
+            self.current_max_steps = min(self.current_max_steps + 50, self.final_max_steps)
         else:
             obs, rew, done, info = self.env.step(action)
             self._cur_x += rew
