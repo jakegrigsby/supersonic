@@ -56,14 +56,34 @@ An additional flag, `--render` can be added if you want to watch training live. 
 parallel environments are rendered. So `mpiexec -n 128 python train.py --render 1` trains with 128 workers but will only render
 1 of them.
 
-At this time, supersonic can only run multiple workers using the cpu version of TensorFlow. This is because it was written to take advantage of research compute clusters where it is much easier to scale using cpus. `tensorflow-gpu` is not compatible with MPI by default, although it seems like it may be possible to build it from source and configure it accordingly. Rewriting to enable a mix of gpu/cpu compute is on the roadmap; it will require rollouts to be spun up using `multiprocessing` instead of `mpi4py`.
+At this time, supersonic can only run multiple workers using the cpu version of TensorFlow. It uses synchronous gradient descent to distribute computation and increase performance.
 
 #### Testing Agents
 ```shell
-python test.py --lvl *env name* --weights *path to correct weights dir*
+python test.py --lvl *env name* --weights *path to correct weights dir* --episodes *num of episodes*
 ```
 An example would be `python test.py --lvl GreenHillZone.Act1 --weights weights/agent/final`. The additional flags `--record` and `--record_path` are a bool and str that let gameplay footage be recorded and saved to the specified directory.
 
+#### References
+
+##### Papers:
+Schulman, John, et al. "Proximal policy optimization algorithms." arXiv preprint arXiv:1707.06347 (2017).
+
+Burda, Yuri, et al. "Exploration by random network distillation." arXiv preprint arXiv:1810.12894 (2018).
+
+Chen, Jianmin, et al. "Revisiting distributed synchronous SGD." arXiv preprint arXiv:1604.00981 (2016).
+
+##### Repositories:
+[openai/random-network-distillation](https://github.com/openai/random-network-distillation)
+
+[jcwleo/random-network-distillation-pytorch](https://github.com/jcwleo/random-network-distillation-pytorch)
+
+[openai/spinningup](https://github.com/openai/spinningup)
+
+[openai/baselines](https://github.com/openai/baselines)
+
+
+--------------------------------------------------------------------
 
 _Developed by students at the University of Virginia, 2019._
 
