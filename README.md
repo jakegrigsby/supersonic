@@ -62,7 +62,7 @@ At this time, supersonic can only run multiple workers using the cpu version of 
 ```shell
 python test.py --lvl *env name* --weights *path to correct weights dir* --episodes *num of episodes*
 ```
-An example would be `python test.py --lvl GreenHillZone.Act1 --weights weights/agent/final`. The additional flags `--record` and `--record_path` are a bool and str that let gameplay footage be recorded and saved to the specified directory.
+An example would be `python test.py --lvl GreenHillZone.Act1 --weights GreenHillZoneAct1/checkpoint_9500`. The additional flags `--record` and `--record_path` are a bool and str that let gameplay footage be recorded and saved to the specified directory.
 
 #### References
 

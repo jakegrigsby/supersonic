@@ -1,6 +1,7 @@
 from copy import deepcopy
 import os
 from operator import add
+import time
 
 import numpy as np
 import tensorflow as tf
@@ -161,7 +162,7 @@ class PPOAgent:
             self.comm.barrier()
         self.save_weights("final")
 
-    def test(self, episodes, max_ep_steps=4500, render=False, stochastic=True):
+    def test(self, episodes, max_ep_steps=4500, render=False, render_delay=.01, stochastic=True):
         try:
             self.env.current_max_steps = max_ep_steps
         except:
@@ -175,6 +176,7 @@ class PPOAgent:
                 obs, rew, done, info = self.env.step(action)
                 if render:
                     self.env.render()
+                    time.sleep(render_delay)
                 cum_rew += rew
                 step += 1
         return cum_rew

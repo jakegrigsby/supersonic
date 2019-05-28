@@ -68,12 +68,12 @@ def main():
     #plot internal and external rewards
     ax2 = plt.subplot(grid[1,0])
     ax2.set_xticklabels([])
-    smoothed_rews_e = utils.moving_average(log_df["external_reward"], min(len(line_list), 5))
+    smoothed_rews_e = utils.moving_average(log_df["external_reward"], min(len(line_list), 50))
     ax2.plot(log_df["episode_num"], smoothed_rews_e)
     ax2.set_title('External Reward')
 
     ax3 = plt.subplot(grid[2,0])
-    ax3.plot(log_df["episode_num"], utils.moving_average(log_df["internal_reward"], min(len(line_list), 5)), color="orange")
+    ax3.plot(log_df["episode_num"], utils.moving_average(log_df["internal_reward"], min(len(line_list), 50)), color="orange")
     ax3.set_title('Internal Reward')
     ax3.set_xlabel("Episode Number")
     plt.show()

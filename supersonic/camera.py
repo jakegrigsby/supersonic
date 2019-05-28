@@ -81,7 +81,11 @@ class Camera(gym.Wrapper):
         stop recording and save video to output path provided when recording began.
         """
         self.clip = np.asarray(self.clip, dtype=np.uint8)
-        skvideo.io.vwrite(self.rec_output_path, self.clip)
+        print("Writing clip to disk...") #this can take a while
+        writer = skvideo.io.FFmpegWriter(self.rec_output_path, inputdict={'-r':'120'})
+        for frame in range(self.clip.shape[0]):
+            writer.writeFrame(self.clip[frame,...])
+        writer.close()
         self.clip, self.actions = [], []
 
     def record_that(self, output_path):
