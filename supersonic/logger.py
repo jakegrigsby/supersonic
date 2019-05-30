@@ -2,7 +2,6 @@ import csv, glob, json, os, time, webcolors
 from datetime import datetime
 
 import numpy as np
-import pandas as pd
 
 COUNTER_DIGITS = 2
 
@@ -38,21 +37,6 @@ def run_num_str(run_num):
 
 
 class Logger:
-    """
-    Allows users to save information to disk at the end of every Episode and Trajectory.
-    Eventually, this will be fed into a Visdom dashboard that can read live from each file and display all the data.
-    """
-
-    # The time to wait before trying to connect to Visdom again, in seconds
-    MAX_VISDOM_TIMEOUT = 5  # 60 * 5
-
-    # The line plots to create for each episode
-    EPISODE_LINE_PLOTS = [
-        ("episode_num", "max_x", "blue"),
-        ("episode_num", "external_reward", "green"),
-        ("episode_num", "internal_reward", "purple"),
-    ]
-
     def __init__(self, folder_base):
         # Make run directory
         self.run_folder = get_next_run_folder(folder_base + "_")
@@ -61,7 +45,6 @@ class Logger:
         self.log_files = {}
 
     def _log(self, filepath, filename, dict_obj):
-        # print('_log {} to {}'.format(dict_obj, filepath+filename))
         total_file_path = filepath + filename
         try:
             os.makedirs(filepath)
@@ -71,11 +54,6 @@ class Logger:
             self.log_files[total_file_path] = open(total_file_path, "a")
         self.log_files[total_file_path].write(json.dumps(dict_obj) + "\n")
         self.close()
-
-    def log_trajectory(self, trajectory_log):
-        episode_num = episode_log.episode_num
-        filename = self.run_folder
-        self._log(filename, "trajectory_logs.csv", vars(trajectory_log))
 
     def log_episode(self, episode_log):
         episode_num = episode_log.episode_num
@@ -88,43 +66,7 @@ class Logger:
             self.log_files[log_file].close()
         self.log_files.clear()
 
-
 class EpisodeLog:
-    """
-    Contains information about one training run within a specific episode.
-    """
-
-    required_params = [
-        "episode_num",
-        "death_coords",
-        "training_steps",
-        "max_x",
-        "score",
-        "external_reward",
-        "internal_reward",
-        "action_count",
-    ]
-
-    def __init__(self, params):
-        for required_param in self.required_params:
-            if required_param not in params:
-                raise ValueError(
-                    "EpisodeLog constructor missing required param {}".format(
-                        required_param
-                    )
-                )
-        # Episode number
-        self.episode_num = params["episode_num"]
-        # The (x,y) coordinates of each of the agent's deaths.
-        self.death_coords = params["death_coords"]
-        # The total number of training steps so far
-        self.training_steps = params["training_steps"]
-        # The farthest x-coord reached by the agent with its y-coord @TODO add y-coord calc
-        self.max_x = params["max_x"]
-        # The max score so far
-        self.score = params["score"]
-        # The reward from this episode
-        self.external_reward = params["external_reward"]
-        self.internal_reward = params["internal_reward"]
-        self.action_count = params["action_count"]
-        # @TODO: implement action distribution, video playback buffer
+    def __init__(self, **kwargs):
+        for key in kwargs.keys():
+            setattr(self, key, kwargs[key])

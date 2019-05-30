@@ -4,6 +4,8 @@ import numpy as np
 import gym
 import retro
 import cv2
+from nes_py.wrappers import BinarySpaceToDiscreteSpaceEnv
+import gym_super_mario_bros
 
 from supersonic import utils
 
@@ -57,29 +59,53 @@ def build_sonic(lvl):
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
     env = AllowBacktrackingAddMaxSteps(env)
-    env.SONIC = True
+    env = SonicInfoWrapper(env)
+    env.recognized = "Sonic"
     return env
 
 
 @env_builder(utils.load_atari_lvl_set())
 def build_atari(lvl):
     env = base_env(lvl)
+    env = ClipScaleReward(env, scale=.01, lower_bound=-1, upper_bound=1.)
     env = WarpFrame(env)
-    env = BasicNormalize(env)
+    env = ScaledFloatFrame(env)
     env = MaxAndSkipEnv(env, skip=4)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
     return env
 
+@env_builder(utils.load_mario_lvl_set())
+def build_mario(lvl):
+    from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
+    env = base_env(lvl)
+    env = BinarySpaceToDiscreteSpaceEnv(env, SIMPLE_MOVEMENT)
+    env = WarpFrame(env)
+    env = ClipScaleReward(env, scale=.01, lower_bound=-1, upper_bound=1.)
+    env = ScaledFloatFrame(env)
+    env = MaxAndSkipEnv(env)
+    env = FrameStackWrapper(env)
+    env.recognized = "Mario"
+    return env
+
 
 def base_env(*args, **kwargs):
     """
-    auto-switching between gym and gym-retro
+    auto-switching between gym, gym-retro and gym-super-mario-bros
+    
+    EAFP
     """
     try:
+        # regular gym
         env = gym.make(*args, **kwargs)
     except:
-        env = retro.make(*args, **kwargs)
+        try:
+            # gym retro
+            env = retro.make(*args, **kwargs)
+        except:
+            # gym-super-mario-bros
+            env = gym_super_mario_bros.make(*args, **kwargs)
+    env.recognized = None
     return env
 
 
@@ -279,7 +305,6 @@ class AllowBacktrackingAddMaxSteps(gym.Wrapper):
     Let the agent go backwards without losing reward.
     Important for Sonic.
     """
-
     def __init__(self, env, initial_max_steps=300, final_max_steps=4500):
         super().__init__(env)
         self._cur_x = 0
@@ -311,7 +336,53 @@ class AllowBacktrackingAddMaxSteps(gym.Wrapper):
             self._last_info = info
         return obs, rew, done, info
 
+class SonicInfoWrapper(gym.Wrapper):
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        info["stage"] = self.env.statename
+        return obs, rew, done, info
 
+class Gauntlet(gym.Wrapper):
+    """
+    String multiple sonic levels together *as long as they're from the same game*
+    """
+    def __init__(self, *lvls):
+        self.env = auto_env(lvls[0])
+        super().__init__(self.env)
+        self.recognized = self.env.recognized
+        self._lvls = [*lvls]
+        self.cur_lvl = 0
+   
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        if done:
+            if info["screen_x"] >= info["screen_x_end"]:
+            # the level is complete
+                if self.cur_lvl < len(self._lvls) - 1:
+                    # this isn't the last level in the progression. Don't stop
+                    self.cur_lvl += 1
+                    self.env.statename = self._lvls[self.cur_lvl]
+                    self.env.load_state(self.env.statename, retro.data.Integrations.STABLE)
+                    self.env.reset()
+                    done = False
+                else:
+                    # time to reset the progression
+                    self.reset()
+                    done = True
+        return obs, rew, done, info
+    
+    def reset(self):
+        if self.cur_lvl > 0:
+            self.cur_lvl = 0
+            self.env.statename = self._lvls[self.cur_lvl]
+            self.env.load_state(self.env.statename, retro.data.Integrations.STABLE)
+        return self.env.reset()
+
+@env_builder('GreenHillZoneComplete')
+def greenhillzonecomplete(_):
+    env = Gauntlet(*[f"GreenHillZone.Act{n}" for n in range(1,4)])
+    return env
+            
 class SonicDiscretizer(gym.ActionWrapper):
     """
     Wrap a gym-retro environment and make it use discrete

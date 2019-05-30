@@ -5,7 +5,6 @@ import math
 
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
 
 
 def load_sonic_lvl_set(train=True):
@@ -43,6 +42,15 @@ def load_atari_lvl_set():
             lvls.append(row[0])
     return lvls
 
+def load_mario_lvl_set():
+    # Initialize the lvls list with the 32 consecutive lvl version of the envs
+    lvls = [f"SuperMarioBros-v{v}" for v in range(0,4)] + [f"SuperMarioBros2-v{v}" for v in range(0,4)]
+    # then add in the individual lvls
+    for world in range(1,9):
+        for stage in range(1,5):
+            for version in range(0,4):
+                lvls.append(f"SuperMarioBros-{world}-{stage}-v{version}")
+    return lvls
 
 ############################################################################################
 
@@ -169,7 +177,7 @@ class Trajectory:
 
         self.rets_e = discounted_return_e.astype(np.float32)
         self.rets_i = discounted_return_i.astype(np.float32)
-        self.gaes = np.expand_dims(e_rew_coeff * adv_e + i_rew_coeff * adv_i, axis=-1).astype(np.float32)
+        self.gaes = (e_rew_coeff * adv_e + i_rew_coeff * adv_i).astype(np.float32)
 
 #########################################################################################
 

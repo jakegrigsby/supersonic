@@ -17,9 +17,7 @@ mpiexec -n 32 python train.py --lvl GreenHillZone.Act1
     pip install -e . 
 ```
 
-3. Install or upgrade to TensorFlow >= 1.12
-
-4. Install other dependencies
+3. Install other dependencies
 ```shell
     pip install -r requirements.txt
 ```
@@ -27,7 +25,8 @@ mpiexec -n 32 python train.py --lvl GreenHillZone.Act1
 5. If you want to train on Sonic, you'll need to buy the ROMs and install them on your system. See the [retro contest details](https://contest.openai.com/2018-1/details/) for more instructions. __After installing the ROMs, you can run the included `./set_up_correct_reward_funcs.sh` to switch out the default reward function for the correct one used by the Retro Contest.__
 
 #### Adding New Environments
-Supersonic can run in any OpenAI Gym or Gym-Retro environment (assuming you have the ROMs) out of the box. However, it's common practice to use 'wrappers' around the environment, which do things like clip the reward, reshape the observation or convert the frames to grayscale. __Defaults are included for [all of the v0 pixel-only atari 2600 environments](https://gym.openai.com/envs/#atari), (84x84 grayscaling, normalizing, frameskipping and 'sticky' actions) as well as all of the Sonic levels.__ (see data/sonic-train.csv and data/sonic-val.csv for a list of those options).
+Supersonic can run in any OpenAI Gym or Gym-Retro environment (assuming you have the ROMs) out of the box. However, it's common practice to use 'wrappers' around the environment, which do things like clip the reward, reshape the observation or convert the frames to grayscale. __Defaults are included for [all of the v0 pixel-only atari 2600 environments](https://gym.openai.com/envs/#atari), (84x84 grayscaling, normalizing, frameskipping and 'sticky' actions) as well as all of the Sonic levels.__ (see data/sonic-train.csv and data/sonic-val.csv for a list of those options). Support for consecutive Sonic levels is included (see `environment.Gauntlet` and `environment.greenhillzonecomplete`). Also comes with defaults for [gym-super-mario-bros](https://github.com/Kautenja/gym-super-mario-bros).
+
 
 To add your own custom wrappers, write a function in `environment.py` that returns the wrapped environment, using any of the wrappers included in that file (or added by you). Then use the `env_builder` decorator with the key for that environment. This will be what you enter from the command line to train on that wrapped environment. Here's an example:
 ```python

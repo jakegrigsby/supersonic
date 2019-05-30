@@ -18,25 +18,21 @@ class PPOAgent:
         self,
         env_id,
         exp_lr=0.001,
-        ppo_lr=0.0001,
+        ppo_lr=1e-5,
         vis_model="NatureVision",
         policy_model="VanillaPolicy",
         val_model="VanillaValue",
         exp_target_model="ExplorationTarget",
         exp_train_model="ExplorationTrain",
-        exp_epochs=4,
         gamma_i=0.99,
         gamma_e=0.999,
         log_dir=None,
-        rollout_length=128,
-        ppo_epochs=4,
+        rollout_length=64,
         e_rew_coeff=2.0,
         i_rew_coeff=1.0,
         vf_coeff=0.5,
-        exp_train_prop=0.25,
+        exp_train_prop=0.5,
         lam=0.95,
-        exp_batch_size=32,
-        ppo_batch_size=32,
         ppo_clip_value=0.1,
         checkpoint_interval=500,
         minkl=None,
@@ -47,18 +43,15 @@ class PPOAgent:
 
         tf.enable_eager_execution()
         tf.logging.set_verbosity(tf.logging.FATAL)
+
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
         self.env = environment.auto_env(env_id)
+        self.env_recognized = self.env.recognized
+
         self.random_rollouts = random_rollouts
-
-        try:
-            self.env_is_sonic = self.env.SONIC
-        except:
-            self.env_is_sonic = False
-
         self.most_recent_step = self.env.reset(), 0, False, {}
         self.nb_actions = self.env.action_space.n
 
@@ -79,11 +72,7 @@ class PPOAgent:
         self.exp_target_model = models.get_model(exp_target_model)()
         self.exp_train_model = models.get_model(exp_train_model)()
 
-        self.exp_epochs = exp_epochs
         self.exp_train_prop = exp_train_prop
-        self.exp_batch_size = exp_batch_size
-        self.ppo_epochs = ppo_epochs
-        self.ppo_batch_size = ppo_batch_size
         self.clip_value = ppo_clip_value
         self.vf_coeff = vf_coeff
         self.entropy_coeff = entropy_coeff
@@ -126,7 +115,7 @@ class PPOAgent:
                 # update exploration nets to bring the loss to normal levels once ppo begins to train
                 exp_grads, _ = self._get_grads(trajectory, exp_only=True)
                 self._update_exp_model(exp_grads)
-        # share exploration net with rest of workers
+        # sync exploration net
         self.weights = self.comm.bcast(self.weights, root=0)
         self.comm.barrier()
         if self.rank == 0:
@@ -206,7 +195,7 @@ class PPOAgent:
             trajectory.add(
                 obs, e_rew, i_rew, exp_target, (action_prob, action), val_e, val_i, done
             )
-            if self.env_is_sonic and self.rank == 0:
+            if self.env_recognized and self.rank == 0:
                 self._update_ep_stats(action, e_rew, i_rew, done, info)
             obs = obs2
             step += 1
@@ -239,26 +228,51 @@ class PPOAgent:
         self._log_cum_rew_e += e_rew
         self._log_cum_rew_i += i_rew
         self._log_training_steps += 1
-        if info["lives"] < self._log_current_lives:
-            self._log_current_lives -= 1
-            current_pos = (info["screen_x"], info["screen_y"])
-            self._log_death_coords.append(current_pos)
-            self._log_furthest_point = max(self._log_furthest_point, current_pos)
+        if self.env_recognized == 'Sonic':
+            if info["lives"] < self._log_current_lives:
+                self._log_current_lives -= 1
+                current_pos = (info["x"], info["y"])
+                self._log_death_coords.append(current_pos)
+                self._log_furthest_point = max(self._log_furthest_point, current_pos)
+            if done:
+                if "FORCED EXIT" in info:
+                    self._log_death_coords = (info["x"], info["y"])
+                    self._log_furthest_point = self._log_death_coords
+                episode_dict = {
+                    "episode_num": self._log_episode_num,
+                    "death_coords": self._log_death_coords,
+                    "training_steps": self._log_training_steps,
+                    "max_x": self._log_furthest_point[0],
+                    "score": info["score"],
+                    "external_reward": self._log_cum_rew_e,
+                    "internal_reward": self._log_cum_rew_i,
+                    "action_count": self._log_action_count,
+                    "max_stage": info["stage"],
+                    "max_act": info["zone"],
+                }
+        
+        elif self.env_recognized == 'Mario':
+            if info["life"] < self._log_current_lives:
+                    self._log_current_lives -= 1
+                    current_pos = (float(info["x_pos"]), float(info["y_pos"]))
+                    self._log_death_coords.append(current_pos)
+                    self._log_furthest_point = max(self._log_furthest_point, current_pos)
+            if done:
+                episode_dict = {
+                    "episode_num": self._log_episode_num,
+                    "death_coords": self._log_death_coords,
+                    "training_steps": self._log_training_steps,
+                    "max_stage": int(info["world"]),
+                    "max_act": int(info["stage"]),
+                    "external_reward": self._log_cum_rew_e,
+                    "internal_reward": self._log_cum_rew_i,
+                    "action_count": self._log_action_count,
+                    "max_x": self._log_furthest_point[0],
+                    "score": int(info["score"]),
+                }
+            
         if done:
-            if "FORCED EXIT" in info:
-                self._log_death_coords = (info["screen_x"], info["screen_y"])
-                self._log_furthest_point = self._log_death_coords
-            episode_dict = {
-                "episode_num": self._log_episode_num,
-                "death_coords": self._log_death_coords,
-                "training_steps": self._log_training_steps,
-                "max_x": self._log_furthest_point[0],
-                "score": info["score"],
-                "external_reward": self._log_cum_rew_e,
-                "internal_reward": self._log_cum_rew_i,
-                "action_count": self._log_action_count,
-            }
-            episode_log = logger.EpisodeLog(episode_dict)
+            episode_log = logger.EpisodeLog(**episode_dict)
             self.logger.log_episode(episode_log)
             self._reset_stats()
 
@@ -307,6 +321,9 @@ class PPOAgent:
         self.save_weights(save_path)
 
     def _get_grads(self, trajectory, exp_only=False):
+        """
+        Compute the exploration and ppo models' gradients for a single worker on a single rollout.
+        """
         # get exploration network grads
         exp_train_samples = int(self.rollout_length * self.exp_train_prop)
         idxs = np.random.choice(trajectory.states.shape[0], exp_train_samples, replace=False)
@@ -318,11 +335,10 @@ class PPOAgent:
         )
         dataset = (
             dataset.shuffle(exp_train_samples + 1)
-            .repeat(self.exp_epochs)
-            .batch(self.exp_batch_size)
+            .batch(exp_train_samples)
         )
 
-        for (batch, (state, target)) in enumerate(dataset):
+        for state, target in dataset:
             with tf.GradientTape() as tape:
                 loss = tf.reduce_mean(tf.square(target - self.exp_train_model(state)))
             exp_grads = tape.gradient(loss, self.exp_train_model.variables)
@@ -345,11 +361,11 @@ class PPOAgent:
         )
         dataset = (
             dataset.shuffle(trajectory.states.shape[0] + 1)
-            .repeat(self.ppo_epochs)
-            .batch(self.ppo_batch_size)
+            .batch(self.rollout_length)
         )
+
         # get ppo network grads
-        for (batch, (state, e_ret, i_ret, old_act_prob, action, gae)) in enumerate(dataset):
+        for state, e_ret, i_ret, old_act_prob, action, gae in dataset:
             with tf.GradientTape() as tape:
                 row_idxs = tf.range(action.shape[0], dtype=tf.int64)
                 action = tf.stack([row_idxs, tf.squeeze(action)], axis=1)
@@ -358,9 +374,9 @@ class PPOAgent:
                 new_act_prob = tf.log(tf.gather_nd(new_act_probs, action))
                 old_act_prob = tf.squeeze(old_act_prob)
 
-                val_e = self.val_model_e(features)
+                val_e = tf.squeeze(self.val_model_e(features))
                 val_e_loss = tf.reduce_mean(tf.square(e_ret - val_e))
-                val_i = self.val_model_i(features)
+                val_i = tf.squeeze(self.val_model_i(features))
                 val_i_loss = tf.reduce_mean(tf.square(i_ret - val_i))
                 v_loss = val_e_loss + val_i_loss
 
