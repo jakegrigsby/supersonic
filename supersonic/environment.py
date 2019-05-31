@@ -84,6 +84,7 @@ def build_mario(lvl):
     env = ClipScaleReward(env, scale=.01, lower_bound=-1, upper_bound=1.)
     env = ScaledFloatFrame(env)
     env = MaxAndSkipEnv(env)
+    env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
     env.recognized = "Mario"
     return env

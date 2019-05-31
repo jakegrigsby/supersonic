@@ -119,14 +119,12 @@ class Trajectory:
 
         # object used to keep track of running variance. Passed between PPOAgent and Trajectory.
         self.i_rew_running_stats = i_rew_running_stats
-
         self.rollout_length = rollout_length
 
     def add(self, state, rew_e, rew_i, exp_target, act_prob_tuple, val_e, val_i, done):
         self.states.append(np.squeeze(state))
         self.rews_e.append(rew_e)
         self.rews_i.append(rew_i)
-        self.i_rew_running_stats.push(rew_i)  # update running variance statistic
         self.old_act_probs.append(act_prob_tuple[0])
         self.actions.append(act_prob_tuple[1])
         self.vals_e.append(val_e)
@@ -153,8 +151,13 @@ class Trajectory:
         self.vals_e.append(last_val_e)
         self.vals_i.append(last_val_i)
         self._lists_to_ndarrays()
-        # normalize internal rews, but shrink them to same scale as external rewards
-        self.rews_i = .01 * self.normalize_rews_i(self.rews_i)
+
+        # normalize internal rews
+        rff = RewardForwardFilter(gamma_i)
+        rffs = [rff.update(rew) for rew in self.rews_i]
+        for rew in rffs:
+            self.i_rew_running_stats.push(rew)
+        self.rews_i = self.normalize_rews_i(self.rews_i)
 
         #calculate internal returns/advantages
         gae = np.zeros(())
@@ -178,6 +181,18 @@ class Trajectory:
         self.rets_e = discounted_return_e.astype(np.float32)
         self.rets_i = discounted_return_i.astype(np.float32)
         self.gaes = (e_rew_coeff * adv_e + i_rew_coeff * adv_i).astype(np.float32)
+
+class RewardForwardFilter(object):
+    def __init__(self, gamma):
+        self.rewems = None
+        self.gamma = gamma
+
+    def update(self, rews):
+        if self.rewems is None:
+            self.rewems = rews
+        else:
+            self.rewems = self.rewems * self.gamma + rews
+        return self.rewems
 
 #########################################################################################
 
@@ -240,6 +255,34 @@ class RunningStats:
     def standard_deviation(self):
         return math.sqrt(self.variance())
 
+class RunningMeanStd(object):
+    # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+    def __init__(self, epsilon=1e-4, shape=()):
+        self.mean = np.zeros(shape, 'float32')
+        self.var = np.ones(shape, 'float32')
+        self.count = epsilon
+
+    def update(self, x):
+        batch_mean = np.mean(x, axis=0)
+        batch_var = np.var(x, axis=0)
+        batch_count = x.shape[0]
+        self.update_from_moments(batch_mean, batch_var, batch_count)
+
+    def update_from_moments(self, batch_mean, batch_var, batch_count):
+        delta = batch_mean - self.mean
+        tot_count = self.count + batch_count
+
+        new_mean = self.mean + delta * batch_count / tot_count
+        m_a = self.var * (self.count)
+        m_b = batch_var * (batch_count)
+        M2 = m_a + m_b + np.square(delta) * self.count * batch_count / (self.count + batch_count)
+        new_var = M2 / (self.count + batch_count)
+
+        new_count = batch_count + self.count
+
+        self.mean = new_mean
+        self.var = new_var
+        self.count = new_count
 #######################################################################################
 
 def moving_average(x, w):

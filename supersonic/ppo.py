@@ -12,7 +12,7 @@ from supersonic import environment, utils, models, logger
 
 class PPOAgent:
     """
-    Basic version of Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
+    Proximal Policy Optimization (Clip) with exploration by Random Network Distillation.
     """
     def __init__(
         self,
@@ -87,24 +87,10 @@ class PPOAgent:
         self.rollout_length = rollout_length
 
         self.i_rew_running_stats = utils.RunningStats()
+        self.obs_running_stats = utils.RunningMeanStd(shape=self.env.observation_space.shape)
 
         self.log_dir = log_dir
-   
-    def _update_exp_model(self, grads):
-        variables = self.exp_train_model.variables
-        self.exp_optimizer.apply_gradients(
-            zip(grads, variables), global_step=self.global_step,
-        )
-    
-    def _update_ppo_models(self, grads):
-        variables = (
-                self.vis_model.variables
-                + self.policy_model.variables
-                + self.val_model_e.variables
-                + self.val_model_i.variables
-        )
-        self.ppo_optimizer.apply_gradients(zip(grads, variables), global_step=self.global_step)
-
+ 
     def train(self, rollouts, render=0):
         # set up logging
         if self.rank == 0:
@@ -150,13 +136,13 @@ class PPOAgent:
                 self.comm.barrier()
                 #sync weights
                 self.weights = self.comm.bcast(self.weights, root=0)
-            # broadcast new weights to workers
-            if self.stop:
-                break # if early stopping activated
             if self.rank == 0:
                 progbar.update(rollout + 1)
                 if rollout % self.checkpoint_interval == 0:
+                    #save weights
                     self._checkpoint(rollout)
+            if self.stop:
+                break # if early stopping activated
             self.comm.barrier()
         self._checkpoint("final")
 
@@ -178,6 +164,21 @@ class PPOAgent:
                 cum_rew += rew
                 step += 1
         return cum_rew
+
+    def _update_exp_model(self, grads):
+        variables = self.exp_train_model.variables
+        self.exp_optimizer.apply_gradients(
+            zip(grads, variables), global_step=self.global_step,
+        )
+    
+    def _update_ppo_models(self, grads):
+        variables = (
+                self.vis_model.variables
+                + self.policy_model.variables
+                + self.val_model_e.variables
+                + self.val_model_i.variables
+        )
+        self.ppo_optimizer.apply_gradients(zip(grads, variables), global_step=self.global_step)
 
     def _rollout(self, steps, render=False):
         """
@@ -223,68 +224,6 @@ class PPOAgent:
         )
         return trajectory
 
-    def _reset_stats(self):
-        self._log_action_count = [0 for i in range(self.nb_actions)]
-        self._log_cum_rew_e, self._log_cum_rew_i = 0, 0
-        self._log_furthest_point = (0, 0)
-        self._log_death_coords = []
-        self._log_current_lives = 3
-        self._log_episode_num += 1
-        self._log_training_steps = 0
-
-    def _update_ep_stats(self, action, e_rew, i_rew, done, info):
-        self._log_action_count[action] += 1
-        self._log_cum_rew_e += e_rew
-        self._log_cum_rew_i += i_rew
-        self._log_training_steps += 1
-        if self.env_recognized == 'Sonic':
-            if info["lives"] < self._log_current_lives:
-                self._log_current_lives -= 1
-                current_pos = (info["screen_x"], info["screen_y"])
-                self._log_death_coords.append(current_pos)
-                self._log_furthest_point = max(self._log_furthest_point, current_pos)
-            if done:
-                if "FORCED EXIT" in info:
-                    self._log_death_coords = (info["x"], info["y"])
-                    self._log_furthest_point = self._log_death_coords
-                episode_dict = {
-                    "episode_num": self._log_episode_num,
-                    "death_coords": self._log_death_coords,
-                    "training_steps": self._log_training_steps,
-                    "max_x": self._log_furthest_point[0],
-                    "score": info["score"],
-                    "external_reward": self._log_cum_rew_e,
-                    "internal_reward": self._log_cum_rew_i,
-                    "action_count": self._log_action_count,
-                    "max_stage": info["stage"],
-                    "max_act": info["zone"],
-                }
-        
-        elif self.env_recognized == 'Mario':
-            if info["life"] < self._log_current_lives:
-                    self._log_current_lives -= 1
-                    current_pos = (float(info["x_pos"]), float(info["y_pos"]))
-                    self._log_death_coords.append(current_pos)
-                    self._log_furthest_point = max(self._log_furthest_point, current_pos)
-            if done:
-                episode_dict = {
-                    "episode_num": self._log_episode_num,
-                    "death_coords": self._log_death_coords,
-                    "training_steps": self._log_training_steps,
-                    "max_stage": int(info["world"]),
-                    "max_act": int(info["stage"]),
-                    "external_reward": self._log_cum_rew_e,
-                    "internal_reward": self._log_cum_rew_i,
-                    "action_count": self._log_action_count,
-                    "max_x": self._log_furthest_point[0],
-                    "score": int(info["score"]),
-                }
-            
-        if done:
-            episode_log = logger.EpisodeLog(**episode_dict)
-            self.logger.log_episode(episode_log)
-            self._reset_stats()
-
     def _choose_action(self, obs, stochastic=True):
         """
         Choose an action based on the current observation. Saves computation by not running the value net,
@@ -312,23 +251,28 @@ class PPOAgent:
         val_e = tf.squeeze(self.val_model_e(features))
         val_i = tf.squeeze(self.val_model_i(features))
         return tf.log(action_prob), action_idx, val_e, val_i
+    
+    def _normalize_obs(self, obs):
+        """
+        Normalize a *tensor*. Done before RND predictions
+        """
+        obs -= self.obs_running_stats.mean
+        obs /= tf.sqrt(self.obs_running_stats.var)
+        obs = tf.clip_by_value(obs, -5., 5.)
+        return obs
 
     def _calc_intrinsic_reward(self, state):
         """
         reward as described in Random Network Distillation
         """
+        self.obs_running_stats.update(state)
         state = tf.convert_to_tensor(state, dtype=tf.float32)
+        state = self._normalize_obs(state)
         target = self.exp_target_model(state)
         pred = self.exp_train_model(state)
         rew = np.mean(np.square(target - pred))
         return rew, target
-
-    def _checkpoint(self, rollout_num):
-        save_path = f"weights/{os.path.basename(self.log_dir)}/checkpoint_{rollout_num}"
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
-        self.save_weights(save_path)
-    
+   
     def _make_datasets(self, trajectory, exp_only=False):
         """
         Save time by making the tf datasets once.
@@ -345,10 +289,8 @@ class PPOAgent:
             exp_dataset.shuffle(exp_train_samples + 1)
             .batch(exp_train_samples)
         )
-
         if exp_only:
             return exp_dataset, None
-
         # create new training set
         ppo_dataset = tf.data.Dataset.from_tensor_slices(
             (
@@ -364,7 +306,6 @@ class PPOAgent:
             ppo_dataset.shuffle(trajectory.states.shape[0] + 1)
             .batch(self.rollout_length)
         )
-
         return exp_dataset, ppo_dataset
 
     def _get_grads(self, exp_dataset, ppo_dataset=None):
@@ -374,6 +315,7 @@ class PPOAgent:
         # get exploration network grads
         for state, target in exp_dataset:
             with tf.GradientTape() as tape:
+                state = self._normalize_obs(state)
                 loss = tf.reduce_mean(tf.square(target - self.exp_train_model(state)))
             exp_grads = tape.gradient(loss, self.exp_train_model.variables)
             if self.max_grad_norm:
@@ -442,6 +384,12 @@ class PPOAgent:
         self.val_model_i.load_weights(os.path.join(path, "val_model_i"))
         self.exp_train_model.load_weights(os.path.join(path, "exp_train_model"))
         self.exp_target_model.load_weights(os.path.join(path, "exp_target_model"))
+    
+    def _checkpoint(self, rollout_num):
+        save_path = f"weights/{os.path.basename(self.log_dir)}/checkpoint_{rollout_num}"
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        self.save_weights(save_path)
 
     @property
     def weights(self):
@@ -462,3 +410,65 @@ class PPOAgent:
         self.val_model_i.set_weights(new_weights[3])
         self.exp_target_model.set_weights(new_weights[4])
         self.exp_train_model.set_weights(new_weights[5])
+
+    def _reset_stats(self):
+        self._log_action_count = [0 for i in range(self.nb_actions)]
+        self._log_cum_rew_e, self._log_cum_rew_i = 0, 0
+        self._log_furthest_point = (0, 0)
+        self._log_death_coords = []
+        self._log_current_lives = 3
+        self._log_episode_num += 1
+        self._log_training_steps = 0
+
+    def _update_ep_stats(self, action, e_rew, i_rew, done, info):
+        self._log_action_count[action] += 1
+        self._log_cum_rew_e += e_rew
+        self._log_cum_rew_i += i_rew
+        self._log_training_steps += 1
+        if self.env_recognized == 'Sonic':
+            if info["lives"] < self._log_current_lives:
+                self._log_current_lives -= 1
+                current_pos = (info["screen_x"], info["screen_y"])
+                self._log_death_coords.append(current_pos)
+                self._log_furthest_point = max(self._log_furthest_point, current_pos)
+            if done:
+                if "FORCED EXIT" in info:
+                    self._log_death_coords = (info["x"], info["y"])
+                    self._log_furthest_point = self._log_death_coords
+                episode_dict = {
+                    "episode_num": self._log_episode_num,
+                    "death_coords": self._log_death_coords,
+                    "training_steps": self._log_training_steps,
+                    "max_x": self._log_furthest_point[0],
+                    "score": info["score"],
+                    "external_reward": self._log_cum_rew_e,
+                    "internal_reward": self._log_cum_rew_i,
+                    "action_count": self._log_action_count,
+                    "max_stage": info["stage"],
+                    "max_act": info["zone"],
+                }
+        
+        elif self.env_recognized == 'Mario':
+            if info["life"] < self._log_current_lives:
+                    self._log_current_lives -= 1
+                    current_pos = (float(info["x_pos"]), float(info["y_pos"]))
+                    self._log_death_coords.append(current_pos)
+                    self._log_furthest_point = max(self._log_furthest_point, current_pos)
+            if done:
+                episode_dict = {
+                    "episode_num": self._log_episode_num,
+                    "death_coords": self._log_death_coords,
+                    "training_steps": self._log_training_steps,
+                    "max_stage": int(info["world"]),
+                    "max_act": int(info["stage"]),
+                    "external_reward": self._log_cum_rew_e,
+                    "internal_reward": self._log_cum_rew_i,
+                    "action_count": self._log_action_count,
+                    "max_x": self._log_furthest_point[0],
+                    "score": int(info["score"]),
+                }
+            
+        if done:
+            episode_log = logger.EpisodeLog(**episode_dict)
+            self.logger.log_episode(episode_log)
+            self._reset_stats()
