@@ -17,8 +17,8 @@ class PPOAgent:
     def __init__(
         self,
         env_id,
-        exp_lr=0.001,
-        ppo_lr=1e-5,
+        exp_lr=1e-3,
+        ppo_lr=1e-4,
         vis_model="NatureVision",
         policy_model="VanillaPolicy",
         val_model="VanillaValue",
@@ -36,9 +36,10 @@ class PPOAgent:
         ppo_clip_value=0.1,
         checkpoint_interval=500,
         minkl=None,
-        entropy_coeff=.0003,
+        entropy_coeff=.0001,
         random_rollouts=25,
         max_grad_norm=.25,
+        opt_epochs=4,
     ):
 
         tf.enable_eager_execution()
@@ -61,6 +62,7 @@ class PPOAgent:
         self.ppo_optimizer = tf.train.AdamOptimizer(learning_rate=self.ppo_lr)
         self.global_step = tf.train.create_global_step()
         self.max_grad_norm = max_grad_norm
+        self.opt_epochs = opt_epochs
         self.minkl = minkl
         self.stop = False
         self.checkpoint_interval = checkpoint_interval
@@ -86,12 +88,8 @@ class PPOAgent:
 
         self.i_rew_running_stats = utils.RunningStats()
 
-        if self.rank == 0:
-            self.log_dir = os.path.join("logs", log_dir) if log_dir else "logs/"
-            self.logger = logger.Logger(self.log_dir)
-            self._log_episode_num = 0
-            self._reset_stats()
-    
+        self.log_dir = log_dir
+   
     def _update_exp_model(self, grads):
         variables = self.exp_train_model.variables
         self.exp_optimizer.apply_gradients(
@@ -108,12 +106,19 @@ class PPOAgent:
         self.ppo_optimizer.apply_gradients(zip(grads, variables), global_step=self.global_step)
 
     def train(self, rollouts, render=0):
+        # set up logging
+        if self.rank == 0:
+            self.log_dir = os.path.join("logs", self.log_dir) if self.log_dir else "logs/"
+            self.logger = logger.Logger(self.log_dir)
+            self._log_episode_num = 0
+            self._reset_stats()
         # calibrate i_rew normalizaiton stats using random rollouts
         for random_rollout in range(self.random_rollouts):
             trajectory = self._rollout(self.rollout_length, render=False)
             if self.rank == 0:
                 # update exploration nets to bring the loss to normal levels once ppo begins to train
-                exp_grads, _ = self._get_grads(trajectory, exp_only=True)
+                exp_dataset, _ = self._make_datasets(trajectory)
+                exp_grads, _ = self._get_grads(exp_dataset)
                 self._update_exp_model(exp_grads)
         # sync exploration net
         self.weights = self.comm.bcast(self.weights, root=0)
@@ -127,21 +132,25 @@ class PPOAgent:
                 render=True if self.rank <= render else False,
             )
             self.comm.barrier()
-            # collect grads from workers
-            grads_exp, grads_ppo = self._get_grads(trajectory)
-            gather_grads_exp = self.comm.gather(grads_exp, 0)
-            gather_grads_ppo = self.comm.gather(grads_ppo, 0)
-            if self.rank == 0:
-                #average grads and apply update
-                sum_grads_exp = [sum(grad) for grad in zip(*gather_grads_exp)]
-                avg_grads_exp = [sum_grad / self.comm.size for sum_grad in sum_grads_exp]
-                self._update_exp_model(avg_grads_exp)
-                sum_grads_ppo = [sum(grad) for grad in zip(*gather_grads_ppo)]
-                avg_grads_ppo = [sum_grad / self.comm.size for sum_grad in sum_grads_ppo]
-                self._update_ppo_models(avg_grads_ppo)
-            self.comm.barrier()
+            #make training datsets from trajectory
+            exp_dataset, ppo_dataset = self._make_datasets(trajectory)
+            for epoch in range(self.opt_epochs):
+                #calculate gradients
+                grads_exp, grads_ppo = self._get_grads(exp_dataset, ppo_dataset)
+                gather_grads_exp = self.comm.gather(grads_exp, 0)
+                gather_grads_ppo = self.comm.gather(grads_ppo, 0)
+                if self.rank == 0:
+                    #average grads and apply update on root
+                    sum_grads_exp = [sum(grad) for grad in zip(*gather_grads_exp)]
+                    avg_grads_exp = [sum_grad / self.comm.size for sum_grad in sum_grads_exp]
+                    self._update_exp_model(avg_grads_exp)
+                    sum_grads_ppo = [sum(grad) for grad in zip(*gather_grads_ppo)]
+                    avg_grads_ppo = [sum_grad / self.comm.size for sum_grad in sum_grads_ppo]
+                    self._update_ppo_models(avg_grads_ppo)
+                self.comm.barrier()
+                #sync weights
+                self.weights = self.comm.bcast(self.weights, root=0)
             # broadcast new weights to workers
-            self.weights = self.comm.bcast(self.weights, root=0)
             if self.stop:
                 break # if early stopping activated
             if self.rank == 0:
@@ -149,7 +158,7 @@ class PPOAgent:
                 if rollout % self.checkpoint_interval == 0:
                     self._checkpoint(rollout)
             self.comm.barrier()
-        self.save_weights("final")
+        self._checkpoint("final")
 
     def test(self, episodes, max_ep_steps=4500, render=False, render_delay=.01, stochastic=True):
         try:
@@ -231,7 +240,7 @@ class PPOAgent:
         if self.env_recognized == 'Sonic':
             if info["lives"] < self._log_current_lives:
                 self._log_current_lives -= 1
-                current_pos = (info["x"], info["y"])
+                current_pos = (info["screen_x"], info["screen_y"])
                 self._log_death_coords.append(current_pos)
                 self._log_furthest_point = max(self._log_furthest_point, current_pos)
             if done:
@@ -319,37 +328,29 @@ class PPOAgent:
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         self.save_weights(save_path)
-
-    def _get_grads(self, trajectory, exp_only=False):
+    
+    def _make_datasets(self, trajectory, exp_only=False):
         """
-        Compute the exploration and ppo models' gradients for a single worker on a single rollout.
+        Save time by making the tf datasets once.
         """
-        # get exploration network grads
         exp_train_samples = int(self.rollout_length * self.exp_train_prop)
         idxs = np.random.choice(trajectory.states.shape[0], exp_train_samples, replace=False)
-        dataset = tf.data.Dataset.from_tensor_slices(
+        exp_dataset = tf.data.Dataset.from_tensor_slices(
             (
                 np.take(trajectory.states, idxs, axis=0),
                 np.take(trajectory.exp_targets, idxs, axis=0),
             )
         )
-        dataset = (
-            dataset.shuffle(exp_train_samples + 1)
+        exp_dataset = (
+            exp_dataset.shuffle(exp_train_samples + 1)
             .batch(exp_train_samples)
         )
 
-        for state, target in dataset:
-            with tf.GradientTape() as tape:
-                loss = tf.reduce_mean(tf.square(target - self.exp_train_model(state)))
-            exp_grads = tape.gradient(loss, self.exp_train_model.variables)
-            if self.max_grad_norm:
-                exp_grads, _ = tf.clip_by_global_norm(exp_grads, self.max_grad_norm)
-
         if exp_only:
-            return exp_grads, None
+            return exp_dataset, None
 
         # create new training set
-        dataset = tf.data.Dataset.from_tensor_slices(
+        ppo_dataset = tf.data.Dataset.from_tensor_slices(
             (
                 trajectory.states,
                 trajectory.rets_e,
@@ -359,13 +360,30 @@ class PPOAgent:
                 trajectory.gaes,
             )
         )
-        dataset = (
-            dataset.shuffle(trajectory.states.shape[0] + 1)
+        ppo_dataset = (
+            ppo_dataset.shuffle(trajectory.states.shape[0] + 1)
             .batch(self.rollout_length)
         )
 
+        return exp_dataset, ppo_dataset
+
+    def _get_grads(self, exp_dataset, ppo_dataset=None):
+        """
+        Compute the exploration and ppo models' gradients for a single worker on a single rollout.
+        """
+        # get exploration network grads
+        for state, target in exp_dataset:
+            with tf.GradientTape() as tape:
+                loss = tf.reduce_mean(tf.square(target - self.exp_train_model(state)))
+            exp_grads = tape.gradient(loss, self.exp_train_model.variables)
+            if self.max_grad_norm:
+                exp_grads, _ = tf.clip_by_global_norm(exp_grads, self.max_grad_norm)
+
+        if not ppo_dataset:
+            return exp_grads, None
+        
         # get ppo network grads
-        for state, e_ret, i_ret, old_act_prob, action, gae in dataset:
+        for state, e_ret, i_ret, old_act_prob, action, gae in ppo_dataset:
             with tf.GradientTape() as tape:
                 row_idxs = tf.range(action.shape[0], dtype=tf.int64)
                 action = tf.stack([row_idxs, tf.squeeze(action)], axis=1)

@@ -33,6 +33,7 @@ class NatureVision(tf.keras.Model):
             activation="linear",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.conv2 = tf.keras.layers.Conv2D(
             64,
@@ -41,6 +42,7 @@ class NatureVision(tf.keras.Model):
             activation="linear",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.conv3 = tf.keras.layers.Conv2D(
             64,
@@ -49,17 +51,20 @@ class NatureVision(tf.keras.Model):
             activation="linear",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.flatten = tf.keras.layers.Flatten(data_format="channels_last")
         self.dense1 = tf.keras.layers.Dense(
             256,
             activation="relu",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.dense2 = tf.keras.layers.Dense(
             448,
             activation="relu",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
 
     def call(self, inputs):
@@ -87,6 +92,7 @@ class ExplorationTarget(tf.keras.Model):
             activation="relu",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.conv2 = tf.keras.layers.Conv2D(
             64,
@@ -95,6 +101,7 @@ class ExplorationTarget(tf.keras.Model):
             activation="relu",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.conv3 = tf.keras.layers.Conv2D(
             64,
@@ -103,9 +110,15 @@ class ExplorationTarget(tf.keras.Model):
             activation="relu",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.flatten = tf.keras.layers.Flatten(data_format="channels_last")
-        self.dense1 = tf.keras.layers.Dense(512, activation="linear", kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)))
+        self.dense1 = tf.keras.layers.Dense(
+            512, 
+            activation="linear", 
+            kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
+        )
 
     def call(self, inputs):
         x = self.conv1(inputs)
@@ -131,6 +144,7 @@ class ExplorationTrain(tf.keras.Model):
             activation="linear",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.conv2 = tf.keras.layers.Conv2D(
             64,
@@ -139,6 +153,7 @@ class ExplorationTrain(tf.keras.Model):
             activation="linear",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.conv3 = tf.keras.layers.Conv2D(
             64,
@@ -147,11 +162,27 @@ class ExplorationTrain(tf.keras.Model):
             activation="linear",
             data_format="channels_last",
             kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.flatten = tf.keras.layers.Flatten(data_format="channels_last")
-        self.dense1 = tf.keras.layers.Dense(128, activation="relu", kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)))
-        self.dense2 = tf.keras.layers.Dense(256, activation="relu", kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)))
-        self.dense3 = tf.keras.layers.Dense(512, activation="linear", kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)))
+        self.dense1 = tf.keras.layers.Dense(
+            128,
+            activation="relu", 
+            kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
+        )
+        self.dense2 = tf.keras.layers.Dense(
+            256, 
+            activation="relu", 
+            kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
+        )
+        self.dense3 = tf.keras.layers.Dense(
+            512, 
+            activation="linear", 
+            kernel_initializer=tf.orthogonal_initializer(np.sqrt(2)),
+            bias_initializer=tf.keras.initializers.Zeros(),
+        )
 
     def call(self, inputs):
         x = self.conv1(inputs)
@@ -176,10 +207,12 @@ class VanillaPolicy(tf.keras.Model):
         super().__init__()
         self.dense1 = tf.keras.layers.Dense(
             512, activation="relu",
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
         self.out = tf.keras.layers.Dense(
             nb_actions,
             activation="softmax",
+            bias_initializer=tf.keras.initializers.Zeros(),
         )
 
     def call(self, inputs):
@@ -195,11 +228,15 @@ class VanillaValue(tf.keras.Model):
     """
     def __init__(self):
         super().__init__()
-        self.dense1 = tf.keras.layers.Dense(448, activation="relu")
+        self.dense1 = tf.keras.layers.Dense(448,
+            activation="relu",
+            bias_initializer=tf.keras.initializers.Ones(),
+            kernel_initializer=tf.orthogonal_initializer(.01),
+        )
         self.dense2 = tf.keras.layers.Dense(1, 
             activation="linear", 
+            bias_initializer=tf.keras.initializers.Ones(),
             kernel_initializer=tf.orthogonal_initializer(.01),
-            bias_initializer=tf.keras.initializers.Zeros(),
         )
 
     def call(self, inputs):

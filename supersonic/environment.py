@@ -58,8 +58,8 @@ def build_sonic(lvl):
     env = MaxAndSkipEnv(env, skip=4)
     env = StickyActionEnv(env)
     env = FrameStackWrapper(env)
-    env = AllowBacktrackingAddMaxSteps(env)
     env = SonicInfoWrapper(env)
+    env = AllowBacktrackingAddMaxSteps(env)
     env.recognized = "Sonic"
     return env
 
@@ -377,6 +377,7 @@ class Gauntlet(gym.Wrapper):
             self.env.statename = self._lvls[self.cur_lvl]
             self.env.load_state(self.env.statename, retro.data.Integrations.STABLE)
         return self.env.reset()
+    
 
 @env_builder('GreenHillZoneComplete')
 def greenhillzonecomplete(_):
