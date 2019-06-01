@@ -54,7 +54,6 @@ def load_mario_lvl_set():
 
 ############################################################################################
 
-
 class FrameStack:
     def __init__(self, capacity, default_frame, dtype=np.uint8):
         self.capacity = capacity
@@ -91,9 +90,7 @@ class FrameStack:
     def stack(self):
         return self._tensor
 
-
 ############################################################################################
-
 
 class Trajectory:
     """
@@ -104,8 +101,7 @@ class Trajectory:
     is called and all the information needed to update the RND networks is
     calculated and made available.
     """
-
-    def __init__(self, rollout_length=128, i_rew_running_stats=None):
+    def __init__(self, rollout_length, i_rew_running_stats=None):
         # keeping track of attributes used in update_models
         self.states = []
         self.rews_i = []
@@ -144,43 +140,45 @@ class Trajectory:
         self.dones = np.asarray(self.dones).astype(np.int8)
 
     def normalize_rews_i(self, rews_i):
-        return rews_i / (self.i_rew_running_stats.standard_deviation() + 1e-8)
+        return rews_i / (np.sqrt(self.i_rew_running_stats.var) + 1e-8)
 
-    def end_trajectory(self, e_rew_coeff, i_rew_coeff, gamma_i, gamma_e, lam, last_val_i, last_val_e):
+    def end_trajectory(self, e_rew_coeff, i_rew_coeff, gamma_i, gamma_e, lam, last_val_i, last_val_e, last_state):
         """calculate gaes, returns, convert to numpy arrays."""
         self.vals_e.append(last_val_e)
         self.vals_i.append(last_val_i)
+        self.states.append(np.squeeze(last_state))
         self._lists_to_ndarrays()
 
         # normalize internal rews
         rff = RewardForwardFilter(gamma_i)
-        rffs = [rff.update(rew) for rew in self.rews_i]
-        for rew in rffs:
-            self.i_rew_running_stats.push(rew)
+        rffs = np.array([rff.update(rew) for rew in self.rews_i])
+        self.i_rew_running_stats.update(rffs)
         self.rews_i = self.normalize_rews_i(self.rews_i)
 
-        #calculate internal returns/advantages
+        #calculate external returns/advantages (episodic)
         gae = np.zeros(())
-        discounted_return_e = np.zeros(self.rollout_length)
+        adv_e = np.zeros(self.rollout_length)
         for t in range(self.rollout_length - 1, -1, -1):
             #external returns are episodic, so we factor in the done values
             delta = self.rews_e[t] + gamma_e * self.vals_e[t+1] * (1 - self.dones[t]) - self.vals_e[t]
             gae = delta + gamma_e * lam * (1 - self.dones[t]) * gae
-            discounted_return_e[t] = gae + self.vals_e[t]
-        adv_e = discounted_return_e - self.vals_e[:-1]
+            adv_e[t] = gae
+        discounted_return_e = adv_e + self.vals_e[:-1]
 
-        #calculate external returns/advantages
+        #calculate internal returns/advantages (non-episodic)
         gae = np.zeros(())
-        discounted_return_i = np.zeros(self.rollout_length)
+        adv_i = np.zeros(self.rollout_length)
         for t in range(self.rollout_length - 1, -1, -1):
             delta = self.rews_i[t] + gamma_i * self.vals_i[t+1] - self.vals_i[t]
             gae = delta + gamma_i * lam * gae
-            discounted_return_i[t] = gae + self.vals_i[t]
-        adv_i = discounted_return_i - self.vals_i[:-1]
+            adv_i[t] = gae
+        discounted_return_i = adv_i + self.vals_i[:-1]
 
         self.rets_e = discounted_return_e.astype(np.float32)
         self.rets_i = discounted_return_i.astype(np.float32)
         self.gaes = (e_rew_coeff * adv_e + i_rew_coeff * adv_i).astype(np.float32)
+        self.next_states = self.states[1:,...]
+        self.states = self.states[:-1,...]
 
 class RewardForwardFilter(object):
     def __init__(self, gamma):
@@ -196,7 +194,6 @@ class RewardForwardFilter(object):
 
 #########################################################################################
 
-
 def save_hyp_dict_to_file(filename, hyp_dict):
     with open(filename, "w") as f:
         json_hyp_dict = json.dump(hyp_dict, f)
@@ -207,9 +204,7 @@ def load_hyp_dict_from_file(filename):
         json_hyp_dict = json.load(f)
     return json_hyp_dict
 
-
 #########################################################################################
-
 
 def random_actions(env, steps):
     obs, rew, done, info = None, 0, False, {}
@@ -217,43 +212,7 @@ def random_actions(env, steps):
         obs, rew, done, info = env.step(env.action_space.sample())
     return obs, rew, done, info
 
-
 #########################################################################################
-
-
-class RunningStats:
-    """Used to maintain running estimate of the internal rewards' variance"""
-    def __init__(self):
-        self.n = 0
-        self.old_m = 0
-        self.new_m = 0
-        self.old_s = 0
-        self.new_s = 0
-
-    def clear(self):
-        self.n = 0
-
-    def push(self, x):
-        self.n += 1
-
-        if self.n == 1:
-            self.old_m = self.new_m = x
-            self.old_s = 0
-        else:
-            self.new_m = self.old_m + (x - self.old_m) / self.n
-            self.new_s = self.old_s + (x - self.old_m) * (x - self.new_m)
-
-            self.old_m = self.new_m
-            self.old_s = self.new_s
-
-    def mean(self):
-        return self.new_m if self.n else 0.0
-
-    def variance(self):
-        return self.new_s / (self.n - 1) if self.n > 1 else 0.0
-
-    def standard_deviation(self):
-        return math.sqrt(self.variance())
 
 class RunningMeanStd(object):
     # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
