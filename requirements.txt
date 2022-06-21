@@ -1,5 +1,5 @@
 gym
-numpy==1.16.2
+numpy==1.22.0
 gym-retro
 opencv-python
 sk-video
