@@ -7,6 +7,6 @@ visdom
 mpi4py
 gym-super-mario-bros
 nes-py
-tensorflow==1.12.0
+tensorflow==2.11.1
 matplotlib
 pandas
